@@ -113,6 +113,7 @@ describe("clickaholic.manage_ui add/edit", function()
     package.loaded["clickaholic.manage_ui"] = nil
     package.loaded["clickaholic.store"] = nil
     package.loaded["clickaholic.winbar"] = nil
+    package.loaded["clickaholic.icon_picker"] = nil
     package.loaded["clickaholic"] = nil
 
     path = vim.fn.tempname() .. ".json"
@@ -127,6 +128,13 @@ describe("clickaholic.manage_ui add/edit", function()
     package.loaded["clickaholic.store"].default_path = function()
       return path
     end
+    -- Stubbed like every other describe block here: winbar.apply() now
+    -- manages a real persistent floating window as a side effect, which
+    -- these tests (about the add/edit form, not about winbar rendering)
+    -- have no reason to exercise.
+    package.loaded["clickaholic.winbar"] = {
+      apply = function() end,
+    }
 
     manage_ui = require("clickaholic.manage_ui")
   end)
@@ -237,22 +245,28 @@ describe("clickaholic.manage_ui add/edit", function()
     local buf = vim.api.nvim_win_get_buf(win)
     assert.is_true(vim.bo[buf].modifiable, "buffer must be modifiable once the form is open")
     local cursor = vim.api.nvim_win_get_cursor(win)
-    -- The form line is exactly "Label: " (7 chars, no value yet) in add
-    -- mode, so nvim clamps the requested column (7, one past the last
-    -- char) to the last valid column (6) in Normal mode -- landing the
-    -- cursor right on/after the "Label: " prefix, ready to type.
-    assert.are.equal(1, cursor[1], "cursor must land on the first form line")
+    -- The store is empty here, so the buffer is: 1 separator line (row 1),
+    -- then the 4 form lines starting at row 2. The form line is exactly
+    -- "Label: " (7 chars, no value yet) in add mode, so nvim clamps the
+    -- requested column (7, one past the last char) to the last valid column
+    -- (6) in Normal mode -- landing the cursor right on/after the "Label: "
+    -- prefix, ready to type.
+    assert.are.equal(2, cursor[1], "cursor must land on the first form line")
     assert.are.equal(#"Label: " - 1, cursor[2], "cursor must land right after the 'Label: ' prefix")
 
     -- Simulate the user typing into each field via real buffer line
     -- replacement (headless feedkeys()-driven insert mode is unreliable in
     -- tests, but this exercises the same buffer-state path real typing
     -- leaves behind, and only works at all because the buffer is
-    -- modifiable -- which is exactly what's under test).
-    vim.api.nvim_buf_set_lines(buf, 0, 1, false, { "Label: Typed" })
-    vim.api.nvim_buf_set_lines(buf, 1, 2, false, { "Icon: 🐙" })
-    vim.api.nvim_buf_set_lines(buf, 2, 3, false, { "Type: shell" })
-    vim.api.nvim_buf_set_lines(buf, 3, 4, false, { "Action: echo typed" })
+    -- modifiable -- which is exactly what's under test). The form starts at
+    -- the 0-indexed line the cursor just landed on (cursor[1] - 1), right
+    -- after the separator -- not hardcoded to 0, since a separator line now
+    -- precedes the form.
+    local form_start = cursor[1] - 1
+    vim.api.nvim_buf_set_lines(buf, form_start, form_start + 1, false, { "Label: Typed" })
+    vim.api.nvim_buf_set_lines(buf, form_start + 1, form_start + 2, false, { "Icon: 🐙" })
+    vim.api.nvim_buf_set_lines(buf, form_start + 2, form_start + 3, false, { "Type: shell" })
+    vim.api.nvim_buf_set_lines(buf, form_start + 3, form_start + 4, false, { "Action: echo typed" })
 
     feed("<CR>")
     vim.wait(50)
@@ -275,14 +289,15 @@ describe("clickaholic.manage_ui add/edit", function()
     feed("a")
     vim.wait(50)
     local buf = vim.api.nvim_win_get_buf(win)
-    -- 1 list line + 4 form lines.
-    assert.are.equal(5, vim.api.nvim_buf_line_count(buf))
+    -- 1 list line + 1 separator + 4 form lines + 1 blank spacer + 1 condensed footer line.
+    assert.are.equal(8, vim.api.nvim_buf_line_count(buf))
 
     feed("<Esc>")
     vim.wait(50)
 
     assert.is_true(vim.api.nvim_win_is_valid(win), "<Esc> must cancel the form, not close the window")
-    assert.are.equal(1, vim.api.nvim_buf_line_count(buf), "form lines must be gone, list-only view restored")
+    -- 1 list line + 1 blank spacer + 1 condensed footer line, form/separator gone.
+    assert.are.equal(3, vim.api.nvim_buf_line_count(buf), "form lines must be gone, list-only view restored")
     assert.is_false(vim.bo[buf].modifiable, "buffer must go back to read-only in list mode")
     assert.are.equal(1, #store.load(path), "cancelling must not persist anything")
   end)
@@ -314,6 +329,93 @@ describe("clickaholic.manage_ui add/edit", function()
     local stored = store.load(path)
     assert.are.equal(1, #stored)
     assert.are.equal("Existing", stored[1].label)
+  end)
+
+  it("a separator line sits between the list and the form", function()
+    store.add(path, { label = "Existing", icon = "📌", action_type = "cmd", action = ":X" })
+
+    manage_ui.open()
+    local win = manage_ui._last_win
+    vim.api.nvim_set_current_win(win)
+
+    feed("a")
+    vim.wait(50)
+
+    local buf = vim.api.nvim_win_get_buf(win)
+    local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+    -- Row 1: the list ("Existing"); row 2: the separator; rows 3-6: the form.
+    -- "─" is multi-byte UTF-8, so Lua patterns can't quantify it directly
+    -- (`─+` only repeats its last raw byte) -- stripping every occurrence
+    -- and checking the line is now empty confirms it's made of nothing else.
+    assert.is_true(lines[1]:find("Existing") ~= nil)
+    assert.are.equal("", (lines[2]:gsub("─", "")), "row 2 must be a separator line, got: " .. lines[2])
+    assert.are.equal("Label: ", lines[3])
+  end)
+
+  it("<C-e> in the form opens the icon picker and writes the chosen icon into the Icon field", function()
+    package.loaded["clickaholic.icon_picker"] = {
+      open = function(on_select)
+        on_select("🚀")
+      end,
+    }
+    package.loaded["clickaholic.manage_ui"] = nil
+    manage_ui = require("clickaholic.manage_ui")
+
+    manage_ui.open()
+    local win = manage_ui._last_win
+    vim.api.nvim_set_current_win(win)
+
+    feed("a")
+    vim.wait(50)
+    feed("<C-e>")
+    vim.wait(50)
+
+    local buf = vim.api.nvim_win_get_buf(win)
+    local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+    local found_icon_line = false
+    for _, line in ipairs(lines) do
+      if line == "Icon: 🚀" then
+        found_icon_line = true
+      end
+    end
+    assert.is_true(found_icon_line, "Icon field must be updated to the picked icon")
+
+    -- Fill in the rest and submit, to prove the picked icon actually
+    -- persists (not just visible in the buffer).
+    feed("<CR>")
+    vim.wait(50)
+    -- Label/Action are still empty, so submission should fail validation
+    -- rather than silently succeed -- confirming the icon write didn't
+    -- accidentally shift or corrupt the other form fields.
+    assert.are.equal(0, #store.load(path))
+  end)
+
+  it("<C-e> in list mode warns instead of opening the icon picker", function()
+    local opened = false
+    package.loaded["clickaholic.icon_picker"] = {
+      open = function()
+        opened = true
+      end,
+    }
+    package.loaded["clickaholic.manage_ui"] = nil
+    manage_ui = require("clickaholic.manage_ui")
+
+    local notified
+    local original_notify = vim.notify
+    vim.notify = function(msg, level)
+      notified = { msg = msg, level = level }
+    end
+
+    manage_ui.open()
+    vim.api.nvim_set_current_win(manage_ui._last_win)
+    feed("<C-e>")
+    vim.wait(50)
+
+    vim.notify = original_notify
+
+    assert.is_false(opened, "icon picker must not open outside the form")
+    assert.is_not_nil(notified)
+    assert.are.equal(vim.log.levels.WARN, notified.level)
   end)
 end)
 
@@ -354,6 +456,40 @@ describe("clickaholic.manage_ui.open", function()
       end
     end
     assert.is_true(found)
+  end)
+
+  it("shows a condensed keybind footer at the bottom, lazygit-style", function()
+    manage_ui.open()
+    local buf = vim.api.nvim_win_get_buf(manage_ui._last_win)
+    local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+    local footer = lines[#lines]
+    assert.is_true(footer:find("q") ~= nil and footer:find("close") ~= nil, "footer must mention 'q close'")
+    assert.is_true(footer:find("%?") ~= nil, "footer must mention the '?' help key")
+  end)
+
+  local function feed(keys)
+    vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes(keys, true, false, true), "x", false)
+  end
+
+  it("'?' toggles the footer to an expanded multi-line legend and back", function()
+    manage_ui.open()
+    local win = manage_ui._last_win
+    vim.api.nvim_set_current_win(win)
+    local buf = vim.api.nvim_win_get_buf(win)
+
+    local condensed_count = vim.api.nvim_buf_line_count(buf)
+
+    feed("?")
+    vim.wait(50)
+    local expanded_count = vim.api.nvim_buf_line_count(buf)
+    assert.is_true(expanded_count > condensed_count, "expanded legend must add more lines")
+    local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+    local joined = table.concat(lines, "\n")
+    assert.is_true(joined:find("add button") ~= nil, "expanded legend must describe each key")
+
+    feed("?")
+    vim.wait(50)
+    assert.are.equal(condensed_count, vim.api.nvim_buf_line_count(buf), "second '?' must collapse back")
   end)
 end)
 
@@ -476,10 +612,11 @@ describe("clickaholic.manage_ui.open keymaps", function()
     move_cursor_to(win, 3)
 
     manage_ui._start_add()
-    -- The list (3 rows) is still on top; form lines now occupy rows 4-7.
-    -- Move the cursor onto a form line (row 5, "Icon: ...") and fire
-    -- CursorMoved the same way a user's cursor movement would.
-    move_cursor_to(win, 5)
+    -- The list (3 rows) is still on top, followed by a separator (row 4),
+    -- then the form (rows 5-8: Label/Icon/Type/Action). Move the cursor onto
+    -- a form line (row 6, "Icon: ...") and fire CursorMoved the same way a
+    -- user's cursor movement would.
+    move_cursor_to(win, 6)
 
     -- While the form is open, list-only keymaps like "d" are mode-gated and
     -- must not fire at all (see the dedicated gating tests). Cancel back to

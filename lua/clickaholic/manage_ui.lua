@@ -49,12 +49,68 @@ end
 
 local store = require("clickaholic.store")
 local winbar = require("clickaholic.winbar")
+local icon_picker = require("clickaholic.icon_picker")
 
 M._last_win = nil
 local state = { buf = nil, win = nil, selected = 1 }
 state.mode = "list" -- "list" | "add" | "edit"
 state.edit_index = nil -- stored-list index, only set in "edit" mode
-state.form_start_line = nil
+state.form_start_line = nil -- 0-indexed buffer line where the form's 4 lines start
+state.list_count = 0 -- number of list rows currently rendered (cursor-selectable in list mode)
+state.footer_expanded = false
+
+local FOOTER_CONDENSED = "a add  e edit  d delete  K/J move  ? all keys  q close"
+local FOOTER_EXPANDED = {
+  "a           add button",
+  "e / <CR>    edit selected button",
+  "d           delete button",
+  "K / J       move button up / down",
+  "<C-e>       pick icon (in the Icon field)",
+  "<CR>        submit form",
+  "<Esc> / q   cancel form / close window",
+  "?           toggle this help",
+}
+
+local function footer_lines()
+  if state.footer_expanded then
+    return FOOTER_EXPANDED
+  end
+  return { FOOTER_CONDENSED }
+end
+
+local function separator_line()
+  local width = vim.api.nvim_win_get_width(state.win)
+  return string.rep("─", width)
+end
+
+-- Single source of truth for the buffer's line layout: list rows, then
+-- (in form mode) a separator + the form's 4 lines, then a blank spacer and
+-- the footer. Returns the full line array plus the 0-indexed line where the
+-- form content starts (nil when not in form mode). Every caller that
+-- (re)draws the buffer goes through this, so there is exactly one place
+-- that computes these offsets.
+local function build_lines(list_lines, form_content_lines)
+  local lines = {}
+  for _, line in ipairs(list_lines) do
+    table.insert(lines, line)
+  end
+
+  local form_start_line = nil
+  if form_content_lines then
+    table.insert(lines, separator_line())
+    form_start_line = #lines
+    for _, line in ipairs(form_content_lines) do
+      table.insert(lines, line)
+    end
+  end
+
+  table.insert(lines, "")
+  for _, line in ipairs(footer_lines()) do
+    table.insert(lines, line)
+  end
+
+  return lines, form_start_line
+end
 
 local function stored_index_for(selected, buttons)
   -- Maps a selected line (over the full merged list) to its index within
@@ -76,7 +132,10 @@ end
 
 local function redraw()
   local buttons = require("clickaholic").get_buttons()
-  local lines = M.render_list_lines(buttons)
+  local list_lines = M.render_list_lines(buttons)
+  state.list_count = #list_lines
+  state.form_start_line = nil
+  local lines = build_lines(list_lines, nil)
   vim.bo[state.buf].modifiable = true
   vim.api.nvim_buf_set_lines(state.buf, 0, -1, false, lines)
   vim.bo[state.buf].modifiable = false
@@ -88,29 +147,29 @@ local function refresh_and_redraw()
   redraw()
 end
 
+-- Overwrites just the 4 form lines (never the list/separator/footer around
+-- them, which is why this uses an exact 4-line range rather than writing to
+-- the end of the buffer).
 function M._set_form_lines(lines)
   vim.bo[state.buf].modifiable = true
-  vim.api.nvim_buf_set_lines(state.buf, state.form_start_line, -1, false, lines)
-  vim.bo[state.buf].modifiable = false
+  vim.api.nvim_buf_set_lines(state.buf, state.form_start_line, state.form_start_line + 4, false, lines)
+  vim.bo[state.buf].modifiable = true
 end
 
 local function enter_form_mode(mode, existing_button)
   state.mode = mode
   local buttons = require("clickaholic").get_buttons()
   local list_lines = M.render_list_lines(buttons)
-  state.form_start_line = #list_lines
+  state.list_count = #list_lines
+
+  local lines, form_start_line = build_lines(list_lines, M.render_form_lines(existing_button))
+  state.form_start_line = form_start_line
 
   vim.bo[state.buf].modifiable = true
-  vim.api.nvim_buf_set_lines(state.buf, 0, -1, false, list_lines)
-  vim.bo[state.buf].modifiable = false
-  M._set_form_lines(M.render_form_lines(existing_button))
-
-  -- Leave the buffer modifiable and the cursor inside the form so the user
-  -- can actually type into it; `_set_form_lines` always leaves the buffer
-  -- non-modifiable when it's done writing, which is correct for every other
-  -- caller (redraw/list rendering) but wrong here since form mode is the one
-  -- state where the user is meant to edit the buffer directly.
-  vim.bo[state.buf].modifiable = true
+  vim.api.nvim_buf_set_lines(state.buf, 0, -1, false, lines)
+  -- Leave the buffer modifiable (form mode is the one state where the user
+  -- is meant to edit the buffer directly) and place the cursor right after
+  -- the "Label: " prefix on the first form line, ready to type.
   vim.api.nvim_win_set_cursor(state.win, { state.form_start_line + 1, #"Label: " })
 end
 
@@ -168,6 +227,7 @@ function M.open()
 
   state.buf, state.win, state.selected = buf, win, 1
   state.mode, state.edit_index, state.form_start_line = "list", nil, nil
+  state.list_count, state.footer_expanded = 0, false
   M._last_win = win
 
   vim.api.nvim_create_autocmd("CursorMoved", {
@@ -180,8 +240,7 @@ function M.open()
         return
       end
       local cursor = vim.api.nvim_win_get_cursor(win)
-      local line_count = vim.api.nvim_buf_line_count(buf)
-      state.selected = math.max(1, math.min(cursor[1], line_count))
+      state.selected = math.max(1, math.min(cursor[1], state.list_count))
     end,
   })
 
@@ -260,6 +319,43 @@ function M.open()
     else
       M._submit_form()
     end
+  end, opts)
+
+  vim.keymap.set({ "n", "i" }, "<C-e>", function()
+    if state.mode == "list" then
+      vim.notify("clickaholic: open the add/edit form first ('a' or 'e')", vim.log.levels.WARN)
+      return
+    end
+    -- Form lines are Label/Icon/Type/Action in that order, so the Icon field
+    -- is always one line after where the form starts.
+    local icon_line = state.form_start_line + 1
+    icon_picker.open(function(icon)
+      local new_line = "Icon: " .. icon
+      vim.bo[state.buf].modifiable = true
+      vim.api.nvim_buf_set_lines(state.buf, icon_line, icon_line + 1, false, { new_line })
+      vim.api.nvim_set_current_win(state.win)
+      vim.api.nvim_win_set_cursor(state.win, { icon_line + 1, #new_line })
+    end)
+  end, opts)
+
+  vim.keymap.set("n", "?", function()
+    state.footer_expanded = not state.footer_expanded
+    if state.mode == "list" then
+      redraw()
+      return
+    end
+    -- A form is open: rebuild around the field values already typed rather
+    -- than discarding them, and keep the cursor where the user left it.
+    local current_form_lines =
+      vim.api.nvim_buf_get_lines(state.buf, state.form_start_line, state.form_start_line + 4, false)
+    local cursor = vim.api.nvim_win_get_cursor(win)
+    local buttons = require("clickaholic").get_buttons()
+    local list_lines = M.render_list_lines(buttons)
+    local lines, form_start_line = build_lines(list_lines, current_form_lines)
+    state.form_start_line = form_start_line
+    vim.bo[state.buf].modifiable = true
+    vim.api.nvim_buf_set_lines(state.buf, 0, -1, false, lines)
+    pcall(vim.api.nvim_win_set_cursor, win, cursor)
   end, opts)
 
   for _, lhs in ipairs({ "<Esc>", "q" }) do
