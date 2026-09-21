@@ -98,7 +98,7 @@ local function enter_form_mode(mode, existing_button)
   state.mode = mode
   local buttons = require("clickaholic").get_buttons()
   local list_lines = M.render_list_lines(buttons)
-  state.form_start_line = #list_lines + 1
+  state.form_start_line = #list_lines
 
   vim.bo[state.buf].modifiable = true
   vim.api.nvim_buf_set_lines(state.buf, 0, -1, false, list_lines)

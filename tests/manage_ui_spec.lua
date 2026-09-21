@@ -171,6 +171,50 @@ describe("clickaholic.manage_ui add/edit", function()
     assert.are.equal(vim.log.levels.ERROR, notified.level)
     assert.are.equal(0, #store.load(path))
   end)
+
+  it("submits correctly when the store already has an entry (regression: form_start_line off-by-one)", function()
+    -- Pre-populate the store so the list occupies >0 lines before the form
+    -- is appended below it. This is the realistic case (adding a 2nd
+    -- button, or editing any button once one already exists) that the
+    -- off-by-one in `enter_form_mode`'s `state.form_start_line` broke:
+    -- nvim_buf_set_lines silently clamps out-of-range writes on a 1-line
+    -- buffer, masking the bug for the initial form-lines write, but the
+    -- subsequent read in `_submit_form` has no such rescue and reads one
+    -- line too late, dropping "Label: ..." and crashing on a nil field.
+    store.add(path, { label = "Existing", icon = "📌", action_type = "cmd", action = ":X" })
+
+    manage_ui.open()
+    manage_ui._start_add()
+
+    -- Edit the form lines in place, the way a real user typing into the
+    -- buffer would -- NOT via a second `_set_form_lines` call, which would
+    -- exercise the same (masked) write path as `enter_form_mode` itself
+    -- rather than proving the read path in `_submit_form` is correct.
+    local buf = vim.api.nvim_win_get_buf(manage_ui._last_win)
+    local function set_field(prefix, new_line)
+      local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+      for i, line in ipairs(lines) do
+        if line:sub(1, #prefix) == prefix then
+          vim.bo[buf].modifiable = true
+          vim.api.nvim_buf_set_lines(buf, i - 1, i, false, { new_line })
+          vim.bo[buf].modifiable = false
+          return
+        end
+      end
+      error("field not found for prefix: " .. prefix)
+    end
+    set_field("Label: ", "Label: Second")
+    set_field("Icon: ", "Icon: 🧪")
+    set_field("Type: ", "Type: shell")
+    set_field("Action: ", "Action: npm run second")
+
+    manage_ui._submit_form()
+
+    local stored = store.load(path)
+    assert.are.equal(2, #stored)
+    assert.are.equal("Existing", stored[1].label)
+    assert.are.equal("Second", stored[2].label)
+  end)
 end)
 
 describe("clickaholic.manage_ui.open", function()
