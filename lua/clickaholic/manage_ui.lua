@@ -106,6 +106,15 @@ function M.open()
   state.buf, state.win, state.selected = buf, win, 1
   M._last_win = win
 
+  vim.api.nvim_create_autocmd("CursorMoved", {
+    buffer = buf,
+    callback = function()
+      local cursor = vim.api.nvim_win_get_cursor(win)
+      local line_count = vim.api.nvim_buf_line_count(buf)
+      state.selected = math.max(1, math.min(cursor[1], line_count))
+    end,
+  })
+
   local opts = { buffer = buf, nowait = true, silent = true }
   vim.keymap.set("n", "d", function()
     local buttons = require("clickaholic").get_buttons()
@@ -125,6 +134,7 @@ function M.open()
     local buttons = require("clickaholic").get_buttons()
     local idx = stored_index_for(state.selected, buttons)
     if not idx then
+      vim.notify("clickaholic: only stored buttons can be reordered", vim.log.levels.WARN)
       return
     end
     store.move(store.default_path(), idx, "up")
@@ -135,6 +145,7 @@ function M.open()
     local buttons = require("clickaholic").get_buttons()
     local idx = stored_index_for(state.selected, buttons)
     if not idx then
+      vim.notify("clickaholic: only stored buttons can be reordered", vim.log.levels.WARN)
       return
     end
     store.move(store.default_path(), idx, "down")

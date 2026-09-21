@@ -139,3 +139,115 @@ describe("clickaholic.manage_ui.open", function()
     assert.is_true(found)
   end)
 end)
+
+describe("clickaholic.manage_ui.open keymaps", function()
+  local manage_ui
+  local store_calls
+  local notifications
+  local orig_notify
+  local orig_confirm
+
+  local function feed(keys)
+    vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes(keys, true, false, true), "x", false)
+  end
+
+  -- Headless Nvim doesn't run a real redraw/idle loop, so CursorMoved isn't
+  -- reliably auto-fired by nvim_win_set_cursor()/feedkeys() the way it would
+  -- be during interactive use. Move the cursor via the real API (exercising
+  -- the same path a user's cursor movement would take) and then fire the
+  -- autocmd explicitly, so the test still exercises manage_ui's own
+  -- CursorMoved callback rather than bypassing it.
+  local function move_cursor_to(win, row)
+    vim.api.nvim_win_set_cursor(win, { row, 0 })
+    vim.cmd("doautocmd CursorMoved")
+  end
+
+  before_each(function()
+    package.loaded["clickaholic.manage_ui"] = nil
+    package.loaded["clickaholic.store"] = nil
+    package.loaded["clickaholic.winbar"] = nil
+    package.loaded["clickaholic"] = nil
+
+    store_calls = {}
+    package.loaded["clickaholic.store"] = {
+      default_path = function()
+        return "fake/path.json"
+      end,
+      remove = function(_, idx)
+        table.insert(store_calls, { op = "remove", idx = idx })
+      end,
+      move = function(_, idx, direction)
+        table.insert(store_calls, { op = "move", idx = idx, direction = direction })
+      end,
+    }
+    package.loaded["clickaholic.winbar"] = {
+      apply = function() end,
+    }
+    -- Merged list: row 1 is config-sourced, rows 2-3 are the 1st/2nd stored
+    -- buttons respectively, so we can prove the keymaps act on whatever row
+    -- the cursor is on (not just the first row).
+    package.loaded["clickaholic"] = {
+      get_buttons = function()
+        return {
+          { label = "Config", icon = "⚙", action_type = "cmd", action = ":X", source = "config" },
+          { label = "First", icon = "1", action_type = "cmd", action = ":A", source = "stored" },
+          { label = "Second", icon = "2", action_type = "cmd", action = ":B", source = "stored" },
+        }
+      end,
+      refresh = function() end,
+    }
+
+    notifications = {}
+    orig_notify = vim.notify
+    vim.notify = function(msg, level)
+      table.insert(notifications, { msg = msg, level = level })
+    end
+    orig_confirm = vim.fn.confirm
+    vim.fn.confirm = function()
+      return 1
+    end
+
+    manage_ui = require("clickaholic.manage_ui")
+  end)
+
+  after_each(function()
+    pcall(vim.api.nvim_win_close, manage_ui._last_win, true)
+    vim.notify = orig_notify
+    vim.fn.confirm = orig_confirm
+  end)
+
+  it("tracks the cursor: deletes the stored button under the cursor, not row 1", function()
+    manage_ui.open()
+    local win = manage_ui._last_win
+    vim.api.nvim_set_current_win(win)
+    move_cursor_to(win, 3) -- row 3: "Second", the 2nd stored button
+    feed("d")
+    vim.wait(50)
+    assert.are.same({ { op = "remove", idx = 2 } }, store_calls)
+  end)
+
+  it("tracks the cursor: reorders the stored button under the cursor, not row 1", function()
+    manage_ui.open()
+    local win = manage_ui._last_win
+    vim.api.nvim_set_current_win(win)
+    move_cursor_to(win, 3) -- row 3: "Second", the 2nd stored button
+    feed("K")
+    vim.wait(50)
+    assert.are.same({ { op = "move", idx = 2, direction = "up" } }, store_calls)
+  end)
+
+  it("warns instead of reordering when the cursor is on a config-sourced row", function()
+    manage_ui.open()
+    vim.api.nvim_set_current_win(manage_ui._last_win)
+    -- cursor starts on row 1, the config-sourced button
+    feed("K")
+    feed("J")
+    vim.wait(50)
+    assert.are.same({}, store_calls)
+    assert.are.equal(2, #notifications)
+    for _, note in ipairs(notifications) do
+      assert.is_true(note.msg:find("reordered") ~= nil)
+      assert.are.equal(vim.log.levels.WARN, note.level)
+    end
+  end)
+end)
