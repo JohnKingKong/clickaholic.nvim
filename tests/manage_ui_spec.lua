@@ -99,3 +99,43 @@ describe("clickaholic.manage_ui", function()
     end)
   end)
 end)
+
+describe("clickaholic.manage_ui.open", function()
+  local manage_ui
+  local path
+
+  before_each(function()
+    package.loaded["clickaholic.manage_ui"] = nil
+    package.loaded["clickaholic.store"] = nil
+    package.loaded["clickaholic.winbar"] = nil
+    package.loaded["clickaholic"] = nil
+
+    path = vim.fn.tempname() .. ".json"
+    package.loaded["clickaholic"] = {
+      get_buttons = function()
+        return { { label = "Search", icon = "🔭", action_type = "cmd", action = ":Telescope", source = "config" } }
+      end,
+    }
+
+    manage_ui = require("clickaholic.manage_ui")
+  end)
+
+  after_each(function()
+    vim.fn.delete(path)
+    pcall(vim.api.nvim_win_close, manage_ui._last_win, true)
+  end)
+
+  it("opens a floating window showing the button list", function()
+    manage_ui.open()
+    assert.is_true(vim.api.nvim_win_is_valid(manage_ui._last_win))
+    local buf = vim.api.nvim_win_get_buf(manage_ui._last_win)
+    local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+    local found = false
+    for _, line in ipairs(lines) do
+      if line:find("Search") then
+        found = true
+      end
+    end
+    assert.is_true(found)
+  end)
+end)
