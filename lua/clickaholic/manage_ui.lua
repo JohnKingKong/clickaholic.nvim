@@ -104,6 +104,14 @@ local function enter_form_mode(mode, existing_button)
   vim.api.nvim_buf_set_lines(state.buf, 0, -1, false, list_lines)
   vim.bo[state.buf].modifiable = false
   M._set_form_lines(M.render_form_lines(existing_button))
+
+  -- Leave the buffer modifiable and the cursor inside the form so the user
+  -- can actually type into it; `_set_form_lines` always leaves the buffer
+  -- non-modifiable when it's done writing, which is correct for every other
+  -- caller (redraw/list rendering) but wrong here since form mode is the one
+  -- state where the user is meant to edit the buffer directly.
+  vim.bo[state.buf].modifiable = true
+  vim.api.nvim_win_set_cursor(state.win, { state.form_start_line + 1, #"Label: " })
 end
 
 function M._start_add()
@@ -178,7 +186,19 @@ function M.open()
   })
 
   local opts = { buffer = buf, nowait = true, silent = true }
+
+  local function require_list_mode()
+    if state.mode ~= "list" then
+      vim.notify("clickaholic: finish or cancel the form first (<CR> to submit, <Esc> to cancel)", vim.log.levels.WARN)
+      return false
+    end
+    return true
+  end
+
   vim.keymap.set("n", "d", function()
+    if not require_list_mode() then
+      return
+    end
     local buttons = require("clickaholic").get_buttons()
     local idx = stored_index_for(state.selected, buttons)
     if not idx then
@@ -193,6 +213,9 @@ function M.open()
   end, opts)
 
   vim.keymap.set("n", "K", function()
+    if not require_list_mode() then
+      return
+    end
     local buttons = require("clickaholic").get_buttons()
     local idx = stored_index_for(state.selected, buttons)
     if not idx then
@@ -204,6 +227,9 @@ function M.open()
   end, opts)
 
   vim.keymap.set("n", "J", function()
+    if not require_list_mode() then
+      return
+    end
     local buttons = require("clickaholic").get_buttons()
     local idx = stored_index_for(state.selected, buttons)
     if not idx then
@@ -215,10 +241,16 @@ function M.open()
   end, opts)
 
   vim.keymap.set("n", "a", function()
+    if not require_list_mode() then
+      return
+    end
     M._start_add()
   end, opts)
 
   vim.keymap.set("n", "e", function()
+    if not require_list_mode() then
+      return
+    end
     M._start_edit()
   end, opts)
 
@@ -232,7 +264,17 @@ function M.open()
 
   for _, lhs in ipairs({ "<Esc>", "q" }) do
     vim.keymap.set("n", lhs, function()
-      pcall(vim.api.nvim_win_close, win, true)
+      if state.mode == "list" then
+        pcall(vim.api.nvim_win_close, win, true)
+        return
+      end
+      -- A form is open: back out to the list instead of closing the whole
+      -- window, so the user doesn't lose their place after a mistaken
+      -- add/edit.
+      state.mode = "list"
+      state.edit_index = nil
+      state.form_start_line = nil
+      redraw()
     end, opts)
   end
 

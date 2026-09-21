@@ -105,6 +105,10 @@ describe("clickaholic.manage_ui add/edit", function()
   local store
   local path
 
+  local function feed(keys)
+    vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes(keys, true, false, true), "x", false)
+  end
+
   before_each(function()
     package.loaded["clickaholic.manage_ui"] = nil
     package.loaded["clickaholic.store"] = nil
@@ -214,6 +218,102 @@ describe("clickaholic.manage_ui add/edit", function()
     assert.are.equal(2, #stored)
     assert.are.equal("Existing", stored[1].label)
     assert.are.equal("Second", stored[2].label)
+  end)
+
+  it("end-to-end: pressing 'a' opens a real editable form, typing and <CR> persists the button", function()
+    -- Drives the actual registered keymap callbacks (not the internal
+    -- _set_form_lines/_submit_form helpers) to prove the interactive path a
+    -- real user takes -- press 'a', type into the buffer, press <CR> --
+    -- actually works. This is the path the Critical finding showed was
+    -- broken: the buffer was left non-modifiable and the cursor was never
+    -- moved into the form.
+    manage_ui.open()
+    local win = manage_ui._last_win
+    vim.api.nvim_set_current_win(win)
+
+    feed("a")
+    vim.wait(50)
+
+    local buf = vim.api.nvim_win_get_buf(win)
+    assert.is_true(vim.bo[buf].modifiable, "buffer must be modifiable once the form is open")
+    local cursor = vim.api.nvim_win_get_cursor(win)
+    -- The form line is exactly "Label: " (7 chars, no value yet) in add
+    -- mode, so nvim clamps the requested column (7, one past the last
+    -- char) to the last valid column (6) in Normal mode -- landing the
+    -- cursor right on/after the "Label: " prefix, ready to type.
+    assert.are.equal(1, cursor[1], "cursor must land on the first form line")
+    assert.are.equal(#"Label: " - 1, cursor[2], "cursor must land right after the 'Label: ' prefix")
+
+    -- Simulate the user typing into each field via real buffer line
+    -- replacement (headless feedkeys()-driven insert mode is unreliable in
+    -- tests, but this exercises the same buffer-state path real typing
+    -- leaves behind, and only works at all because the buffer is
+    -- modifiable -- which is exactly what's under test).
+    vim.api.nvim_buf_set_lines(buf, 0, 1, false, { "Label: Typed" })
+    vim.api.nvim_buf_set_lines(buf, 1, 2, false, { "Icon: 🐙" })
+    vim.api.nvim_buf_set_lines(buf, 2, 3, false, { "Type: shell" })
+    vim.api.nvim_buf_set_lines(buf, 3, 4, false, { "Action: echo typed" })
+
+    feed("<CR>")
+    vim.wait(50)
+
+    local stored = store.load(path)
+    assert.are.equal(1, #stored)
+    assert.are.equal("Typed", stored[1].label)
+    assert.are.equal("🐙", stored[1].icon)
+    assert.are.equal("shell", stored[1].action_type)
+    assert.are.equal("echo typed", stored[1].action)
+  end)
+
+  it("<Esc> while a form is open cancels the form without closing the window", function()
+    store.add(path, { label = "Existing", icon = "📌", action_type = "cmd", action = ":X" })
+
+    manage_ui.open()
+    local win = manage_ui._last_win
+    vim.api.nvim_set_current_win(win)
+
+    feed("a")
+    vim.wait(50)
+    local buf = vim.api.nvim_win_get_buf(win)
+    -- 1 list line + 4 form lines.
+    assert.are.equal(5, vim.api.nvim_buf_line_count(buf))
+
+    feed("<Esc>")
+    vim.wait(50)
+
+    assert.is_true(vim.api.nvim_win_is_valid(win), "<Esc> must cancel the form, not close the window")
+    assert.are.equal(1, vim.api.nvim_buf_line_count(buf), "form lines must be gone, list-only view restored")
+    assert.is_false(vim.bo[buf].modifiable, "buffer must go back to read-only in list mode")
+    assert.are.equal(1, #store.load(path), "cancelling must not persist anything")
+  end)
+
+  it("'d' while a form is open does not trigger a delete", function()
+    store.add(path, { label = "Existing", icon = "📌", action_type = "cmd", action = ":X" })
+
+    -- Safety net: if the mode gate regresses, a fired 'd' would call
+    -- vim.fn.confirm() and hang headless nvim waiting on a prompt. Stub it
+    -- to auto-decline so a regression fails the assertions below instead of
+    -- hanging the test run.
+    local orig_confirm = vim.fn.confirm
+    vim.fn.confirm = function()
+      return 2
+    end
+
+    manage_ui.open()
+    local win = manage_ui._last_win
+    vim.api.nvim_set_current_win(win)
+
+    feed("a")
+    vim.wait(50)
+
+    feed("d")
+    vim.wait(50)
+
+    vim.fn.confirm = orig_confirm
+
+    local stored = store.load(path)
+    assert.are.equal(1, #stored)
+    assert.are.equal("Existing", stored[1].label)
   end)
 end)
 
@@ -381,13 +481,36 @@ describe("clickaholic.manage_ui.open keymaps", function()
     -- CursorMoved the same way a user's cursor movement would.
     move_cursor_to(win, 5)
 
-    -- If the cursor-driven selection were still being clamped to the whole
-    -- buffer (pre-form-mode behavior), state.selected would become 5, which
-    -- doesn't map to any stored button and "d" would just warn. Instead it
-    -- must keep pointing at row 3 ("Second"), proving form lines aren't
-    -- treated as selectable list rows.
+    -- While the form is open, list-only keymaps like "d" are mode-gated and
+    -- must not fire at all (see the dedicated gating tests). Cancel back to
+    -- list mode first, then confirm "d" still targets row 3 ("Second"): if
+    -- the cursor-driven selection had been clamped to the whole buffer
+    -- (pre-form-mode behavior) instead of ignoring form-line movement,
+    -- state.selected would have become 5, which doesn't map to any stored
+    -- button and "d" would just warn instead of removing idx 2.
+    feed("<Esc>")
+    vim.wait(50)
     feed("d")
     vim.wait(50)
     assert.are.same({ { op = "remove", idx = 2 } }, store_calls)
+  end)
+
+  it("mode-gates 'd', 'a', 'e', 'K', 'J' while a form is open: they warn instead of acting", function()
+    manage_ui.open()
+    local win = manage_ui._last_win
+    vim.api.nvim_set_current_win(win)
+    move_cursor_to(win, 3)
+
+    manage_ui._start_add()
+
+    for _, key in ipairs({ "d", "a", "e", "K", "J" }) do
+      notifications = {}
+      feed(key)
+      vim.wait(50)
+      assert.are.same({}, store_calls, key .. " must not touch the store while a form is open")
+      assert.are.equal(1, #notifications, key .. " must warn while a form is open")
+      assert.is_true(notifications[1].msg:find("form") ~= nil)
+      assert.are.equal(vim.log.levels.WARN, notifications[1].level)
+    end
   end)
 end)
