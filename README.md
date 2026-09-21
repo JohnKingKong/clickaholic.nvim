@@ -2,7 +2,8 @@
 
 A highly configurable button bar for Neovim. Define buttons — icon,
 label, and an action (a Vim command, a shell command, or a Lua function)
-— and click them from a persistent bar at the top of every window.
+— and click them from a persistent bar pinned above everything, once,
+never duplicated across splits or tabs.
 
 ## Installation (lazy.nvim)
 
@@ -21,13 +22,32 @@ return {
 
 ## Adding buttons interactively
 
-Run `:Clickaholic` to open the button manager: `a` to add, `e`/`<CR>` to
-edit, `d` to delete, `K`/`J` to reorder. Buttons added this way are saved
-to `stdpath('data')/clickaholic.json` and survive restarts.
+Run `:Clickaholic` to open the button manager:
+
+| Key | Action |
+|---|---|
+| `a` | Add a button |
+| `e` / `<CR>` | Edit the selected button |
+| `d` | Delete the selected button |
+| `K` / `J` | Move the selected button up / down |
+| `<C-e>` | Pick an icon (while editing the Icon field) |
+| `<CR>` | Submit the form |
+| `<Esc>` / `q` | Cancel the form, or close the window from the list |
+| `?` | Toggle the full keybind legend |
+
+Buttons added this way are saved to `stdpath('data')/clickaholic.json`
+and survive restarts.
 
 Buttons defined in `setup()` with `action_type = "lua"` can run any Lua
 function, but can only be changed by editing your config — a function
 can't be saved to disk, so the manager only offers `cmd`/`shell` types.
+
+### Picking an icon
+
+While editing a button's Icon field, press `<C-e>` to browse a curated
+set of common emoji in a small popup. Use Neovim's own `/` search to
+filter (e.g. `/rocket<CR>`), `j`/`k` to move, `<CR>` to pick, `<Esc>`/`q`
+to cancel.
 
 ## Commands
 
