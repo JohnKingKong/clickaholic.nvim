@@ -100,6 +100,79 @@ describe("clickaholic.manage_ui", function()
   end)
 end)
 
+describe("clickaholic.manage_ui add/edit", function()
+  local manage_ui
+  local store
+  local path
+
+  before_each(function()
+    package.loaded["clickaholic.manage_ui"] = nil
+    package.loaded["clickaholic.store"] = nil
+    package.loaded["clickaholic.winbar"] = nil
+    package.loaded["clickaholic"] = nil
+
+    path = vim.fn.tempname() .. ".json"
+    store = require("clickaholic.store")
+
+    package.loaded["clickaholic"] = {
+      get_buttons = function()
+        return store.load(path)
+      end,
+      refresh = function() end,
+    }
+    package.loaded["clickaholic.store"].default_path = function()
+      return path
+    end
+
+    manage_ui = require("clickaholic.manage_ui")
+  end)
+
+  after_each(function()
+    vim.fn.delete(path)
+    pcall(vim.api.nvim_win_close, manage_ui._last_win, true)
+  end)
+
+  it("adding a button via the form persists it to the store", function()
+    manage_ui.open()
+    manage_ui._start_add()
+    manage_ui._set_form_lines({
+      "Label: Test",
+      "Icon: 🧪",
+      "Type: shell",
+      "Action: npm test",
+    })
+    manage_ui._submit_form()
+
+    local stored = store.load(path)
+    assert.are.equal(1, #stored)
+    assert.are.equal("Test", stored[1].label)
+  end)
+
+  it("shows an error and keeps the form open on invalid input", function()
+    local notified
+    local original_notify = vim.notify
+    vim.notify = function(msg, level)
+      notified = { msg = msg, level = level }
+    end
+
+    manage_ui.open()
+    manage_ui._start_add()
+    manage_ui._set_form_lines({
+      "Label: ",
+      "Icon: 🧪",
+      "Type: shell",
+      "Action: npm test",
+    })
+    manage_ui._submit_form()
+
+    vim.notify = original_notify
+
+    assert.is_not_nil(notified)
+    assert.are.equal(vim.log.levels.ERROR, notified.level)
+    assert.are.equal(0, #store.load(path))
+  end)
+end)
+
 describe("clickaholic.manage_ui.open", function()
   local manage_ui
   local path
@@ -249,5 +322,28 @@ describe("clickaholic.manage_ui.open keymaps", function()
       assert.is_true(note.msg:find("reordered") ~= nil)
       assert.are.equal(vim.log.levels.WARN, note.level)
     end
+  end)
+
+  it("ignores cursor movement onto form lines while in form mode, keeping the last list selection", function()
+    manage_ui.open()
+    local win = manage_ui._last_win
+    vim.api.nvim_set_current_win(win)
+    -- Select row 3 ("Second", the 2nd stored button) before entering form mode.
+    move_cursor_to(win, 3)
+
+    manage_ui._start_add()
+    -- The list (3 rows) is still on top; form lines now occupy rows 4-7.
+    -- Move the cursor onto a form line (row 5, "Icon: ...") and fire
+    -- CursorMoved the same way a user's cursor movement would.
+    move_cursor_to(win, 5)
+
+    -- If the cursor-driven selection were still being clamped to the whole
+    -- buffer (pre-form-mode behavior), state.selected would become 5, which
+    -- doesn't map to any stored button and "d" would just warn. Instead it
+    -- must keep pointing at row 3 ("Second"), proving form lines aren't
+    -- treated as selectable list rows.
+    feed("d")
+    vim.wait(50)
+    assert.are.same({ { op = "remove", idx = 2 } }, store_calls)
   end)
 end)

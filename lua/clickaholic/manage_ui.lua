@@ -52,6 +52,9 @@ local winbar = require("clickaholic.winbar")
 
 M._last_win = nil
 local state = { buf = nil, win = nil, selected = 1 }
+state.mode = "list" -- "list" | "add" | "edit"
+state.edit_index = nil -- stored-list index, only set in "edit" mode
+state.form_start_line = nil
 
 local function stored_index_for(selected, buttons)
   -- Maps a selected line (over the full merged list) to its index within
@@ -85,6 +88,58 @@ local function refresh_and_redraw()
   redraw()
 end
 
+function M._set_form_lines(lines)
+  vim.bo[state.buf].modifiable = true
+  vim.api.nvim_buf_set_lines(state.buf, state.form_start_line, -1, false, lines)
+  vim.bo[state.buf].modifiable = false
+end
+
+local function enter_form_mode(mode, existing_button)
+  state.mode = mode
+  local buttons = require("clickaholic").get_buttons()
+  local list_lines = M.render_list_lines(buttons)
+  state.form_start_line = #list_lines + 1
+
+  vim.bo[state.buf].modifiable = true
+  vim.api.nvim_buf_set_lines(state.buf, 0, -1, false, list_lines)
+  vim.bo[state.buf].modifiable = false
+  M._set_form_lines(M.render_form_lines(existing_button))
+end
+
+function M._start_add()
+  state.edit_index = nil
+  enter_form_mode("add", nil)
+end
+
+function M._start_edit()
+  local buttons = require("clickaholic").get_buttons()
+  local idx = stored_index_for(state.selected, buttons)
+  if not idx then
+    vim.notify("clickaholic: only stored buttons can be edited", vim.log.levels.WARN)
+    return
+  end
+  state.edit_index = idx
+  enter_form_mode("edit", buttons[state.selected])
+end
+
+function M._submit_form()
+  local lines = vim.api.nvim_buf_get_lines(state.buf, state.form_start_line, state.form_start_line + 4, false)
+  local button, err = M.parse_form(lines)
+  if not button then
+    vim.notify("clickaholic: " .. err, vim.log.levels.ERROR)
+    return
+  end
+
+  if state.mode == "edit" then
+    store.update(store.default_path(), state.edit_index, button)
+  else
+    store.add(store.default_path(), button)
+  end
+
+  state.mode = "list"
+  refresh_and_redraw()
+end
+
 function M.open()
   local buf = vim.api.nvim_create_buf(false, true)
   vim.bo[buf].buftype = "nofile"
@@ -104,11 +159,18 @@ function M.open()
   })
 
   state.buf, state.win, state.selected = buf, win, 1
+  state.mode, state.edit_index, state.form_start_line = "list", nil, nil
   M._last_win = win
 
   vim.api.nvim_create_autocmd("CursorMoved", {
     buffer = buf,
     callback = function()
+      -- Once a form is open, the buffer also contains form lines below the
+      -- list; those aren't selectable list rows, so cursor movement must
+      -- not update state.selected while a form is active.
+      if state.mode ~= "list" then
+        return
+      end
       local cursor = vim.api.nvim_win_get_cursor(win)
       local line_count = vim.api.nvim_buf_line_count(buf)
       state.selected = math.max(1, math.min(cursor[1], line_count))
@@ -150,6 +212,22 @@ function M.open()
     end
     store.move(store.default_path(), idx, "down")
     refresh_and_redraw()
+  end, opts)
+
+  vim.keymap.set("n", "a", function()
+    M._start_add()
+  end, opts)
+
+  vim.keymap.set("n", "e", function()
+    M._start_edit()
+  end, opts)
+
+  vim.keymap.set("n", "<CR>", function()
+    if state.mode == "list" then
+      M._start_edit()
+    else
+      M._submit_form()
+    end
   end, opts)
 
   for _, lhs in ipairs({ "<Esc>", "q" }) do
