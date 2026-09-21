@@ -48,10 +48,33 @@ describe("clickaholic.winbar", function()
   end)
 
   describe("apply", function()
-    it("sets vim.o.winbar to the rendered string", function()
+    after_each(function()
+      if winbar._bar_win and vim.api.nvim_win_is_valid(winbar._bar_win) then
+        vim.api.nvim_win_close(winbar._bar_win, true)
+      end
+    end)
+
+    it("renders into a dedicated floating window's winbar, not vim.o.winbar", function()
       local buttons = { { label = "Search", icon = "🔭", action_type = "cmd", action = ":Telescope" } }
       winbar.apply(buttons)
-      assert.are.equal(winbar.render(buttons), vim.o.winbar)
+      assert.is_true(vim.api.nvim_win_is_valid(winbar._bar_win))
+      assert.are.equal(winbar.render(buttons), vim.wo[winbar._bar_win].winbar)
+      assert.are_not.equal(winbar.render(buttons), vim.o.winbar)
+    end)
+
+    it("reuses the same floating window across repeated calls (no duplication)", function()
+      winbar.apply({ { label = "One", icon = "1", action_type = "cmd", action = ":X" } })
+      local first_win = winbar._bar_win
+      winbar.apply({ { label = "Two", icon = "2", action_type = "cmd", action = ":Y" } })
+      assert.are.equal(first_win, winbar._bar_win)
+    end)
+
+    it("spans the full editor width at the top", function()
+      local buttons = { { label = "Search", icon = "🔭", action_type = "cmd", action = ":Telescope" } }
+      winbar.apply(buttons)
+      local config = vim.api.nvim_win_get_config(winbar._bar_win)
+      assert.are.equal(vim.o.columns, config.width)
+      assert.are.equal(0, config.col)
     end)
   end)
 end)
