@@ -1,10 +1,20 @@
 local M = {}
 
+-- Icon and label are both optional (validated in parse_form as "at least
+-- one"), so joining them always with a space would leave a stray leading or
+-- trailing space when only one is set.
+local function icon_and_label(icon, label)
+  if icon ~= "" and label ~= "" then
+    return icon .. " " .. label
+  end
+  return icon .. label
+end
+
 function M.render_list_lines(buttons)
   local lines = {}
   for _, button in ipairs(buttons) do
     local prefix = button.source == "config" and "[config] " or ""
-    table.insert(lines, string.format("%s%s %s", prefix, button.icon, button.label))
+    table.insert(lines, prefix .. icon_and_label(button.icon, button.label))
   end
   return lines
 end
@@ -29,8 +39,8 @@ function M.parse_form(lines)
   local action_type = field_value(lines[3], "Type: ")
   local action = field_value(lines[4], "Action: ")
 
-  if label == "" then
-    return nil, "Label cannot be empty"
+  if label == "" and icon == "" then
+    return nil, "Provide a label, an icon, or both"
   end
   if action_type ~= "cmd" and action_type ~= "shell" then
     return nil, "Type must be 'cmd' or 'shell'"

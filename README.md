@@ -1,9 +1,9 @@
 # clickaholic.nvim
 
-A highly configurable button bar for Neovim. Define buttons — icon,
-label, and an action (a Vim command, a shell command, or a Lua function)
-— and click them from a persistent bar pinned above everything, once,
-never duplicated across splits or tabs.
+A highly configurable button bar for Neovim. Define buttons — an icon,
+a label, or both, plus an action (a Vim command, a shell command, or a
+Lua function) — and click them from a persistent bar at the top of
+every window.
 
 ## Installation (lazy.nvim)
 
@@ -41,6 +41,10 @@ and survive restarts.
 Buttons defined in `setup()` with `action_type = "lua"` can run any Lua
 function, but can only be changed by editing your config — a function
 can't be saved to disk, so the manager only offers `cmd`/`shell` types.
+
+Icon and label are each optional — leave either field blank for an
+icon-only or text-only button — but at least one of the two is
+required.
 
 ### Picking an icon
 

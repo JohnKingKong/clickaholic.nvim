@@ -25,6 +25,20 @@ describe("clickaholic.winbar", function()
     it("returns an empty string for no buttons", function()
       assert.are.equal("", winbar.render({}))
     end)
+
+    it("renders an icon-only button without a stray double space", function()
+      local rendered = winbar.render({
+        { label = "", icon = "🚀", action_type = "cmd", action = ":X" },
+      })
+      assert.is_true(rendered:find("🚀 %%X") ~= nil, "expected a single space before %%X, got: " .. rendered)
+    end)
+
+    it("renders a label-only button without a stray leading space", function()
+      local rendered = winbar.render({
+        { label = "Deploy", icon = "", action_type = "cmd", action = ":X" },
+      })
+      assert.is_true(rendered:find("@ Deploy %%X") ~= nil, "expected a single space after @, got: " .. rendered)
+    end)
   end)
 
   describe("click", function()

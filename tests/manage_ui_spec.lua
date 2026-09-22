@@ -19,6 +19,20 @@ describe("clickaholic.manage_ui", function()
       assert.is_nil(lines[2]:find("%[config%]"))
       assert.is_true(lines[2]:find("Test") ~= nil)
     end)
+
+    it("renders an icon-only button without a stray trailing space", function()
+      local lines = manage_ui.render_list_lines({
+        { label = "", icon = "🚀", source = "stored" },
+      })
+      assert.are.equal("🚀", lines[1])
+    end)
+
+    it("renders a label-only button without a stray leading space", function()
+      local lines = manage_ui.render_list_lines({
+        { label = "Deploy", icon = "", source = "stored" },
+      })
+      assert.are.equal("Deploy", lines[1])
+    end)
   end)
 
   describe("render_form_lines", function()
@@ -65,15 +79,47 @@ describe("clickaholic.manage_ui", function()
       }, button)
     end)
 
-    it("rejects an empty label", function()
+    it("allows an empty label when an icon is provided (icon-only button)", function()
       local button, err = manage_ui.parse_form({
         "Label: ",
         "Icon: 🧪",
         "Type: shell",
         "Action: npm test",
       })
+      assert.is_nil(err)
+      assert.are.same({
+        label = "",
+        icon = "🧪",
+        action_type = "shell",
+        action = "npm test",
+      }, button)
+    end)
+
+    it("allows an empty icon when a label is provided (label-only button)", function()
+      local button, err = manage_ui.parse_form({
+        "Label: Test",
+        "Icon: ",
+        "Type: shell",
+        "Action: npm test",
+      })
+      assert.is_nil(err)
+      assert.are.same({
+        label = "Test",
+        icon = "",
+        action_type = "shell",
+        action = "npm test",
+      }, button)
+    end)
+
+    it("rejects when both label and icon are empty", function()
+      local button, err = manage_ui.parse_form({
+        "Label: ",
+        "Icon: ",
+        "Type: shell",
+        "Action: npm test",
+      })
       assert.is_nil(button)
-      assert.is_true(err:find("[Ll]abel") ~= nil)
+      assert.is_true(err:find("[Ll]abel") ~= nil or err:find("[Ii]con") ~= nil)
     end)
 
     it("rejects an empty action", function()
@@ -169,9 +215,11 @@ describe("clickaholic.manage_ui add/edit", function()
 
     manage_ui.open()
     manage_ui._start_add()
+    -- Label and icon are both optional individually, but not both empty at
+    -- once -- this is still genuinely invalid input.
     manage_ui._set_form_lines({
       "Label: ",
-      "Icon: 🧪",
+      "Icon: ",
       "Type: shell",
       "Action: npm test",
     })

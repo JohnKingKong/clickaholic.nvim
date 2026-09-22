@@ -13,6 +13,16 @@ function M.click(id)
   end
 end
 
+-- Icon and label are both optional (at least one is required by
+-- manage_ui.parse_form), so joining them with a fixed space would leave a
+-- stray leading or trailing space when only one is set.
+local function icon_and_label(icon, label)
+  if icon ~= "" and label ~= "" then
+    return icon .. " " .. label
+  end
+  return icon .. label
+end
+
 function M.render(buttons)
   if #buttons == 0 then
     return ""
@@ -21,7 +31,11 @@ function M.render(buttons)
   for i, button in ipairs(buttons) do
     table.insert(
       parts,
-      string.format("%%%d@v:lua.require'clickaholic.winbar'.click@ %s %s %%X", i, button.icon, button.label)
+      string.format(
+        "%%%d@v:lua.require'clickaholic.winbar'.click@ %s %%X",
+        i,
+        icon_and_label(button.icon, button.label)
+      )
     )
   end
   return table.concat(parts)
