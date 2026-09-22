@@ -2,7 +2,7 @@
 local M = {}
 
 local store = require("clickaholic.store")
-local lualine_integration = require("clickaholic.lualine")
+local tabline_integration = require("clickaholic.tabline")
 
 local config_buttons = {}
 local merged_buttons = {}
@@ -46,7 +46,7 @@ function M.setup(opts)
     end
   end
   merge()
-  lualine_integration.apply(merged_buttons)
+  tabline_integration.apply(merged_buttons)
 end
 
 function M.get_buttons()

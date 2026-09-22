@@ -58,7 +58,7 @@ function M.parse_form(lines)
 end
 
 local store = require("clickaholic.store")
-local lualine_integration = require("clickaholic.lualine")
+local tabline_integration = require("clickaholic.tabline")
 local icon_picker = require("clickaholic.icon_picker")
 
 M._last_win = nil
@@ -144,7 +144,7 @@ end
 
 local function refresh_and_redraw()
   require("clickaholic").refresh()
-  lualine_integration.apply(require("clickaholic").get_buttons())
+  tabline_integration.apply(require("clickaholic").get_buttons())
   redraw()
 end
 

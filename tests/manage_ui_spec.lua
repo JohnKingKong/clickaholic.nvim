@@ -158,7 +158,7 @@ describe("clickaholic.manage_ui add/edit", function()
   before_each(function()
     package.loaded["clickaholic.manage_ui"] = nil
     package.loaded["clickaholic.store"] = nil
-    package.loaded["clickaholic.lualine"] = nil
+    package.loaded["clickaholic.tabline"] = nil
     package.loaded["clickaholic.icon_picker"] = nil
     package.loaded["clickaholic"] = nil
 
@@ -175,8 +175,8 @@ describe("clickaholic.manage_ui add/edit", function()
       return path
     end
     -- Stubbed like every other describe block here: these tests are about
-    -- the add/edit form, not about lualine rendering.
-    package.loaded["clickaholic.lualine"] = {
+    -- the add/edit form, not about tabline rendering.
+    package.loaded["clickaholic.tabline"] = {
       apply = function() end,
     }
 
@@ -473,7 +473,7 @@ describe("clickaholic.manage_ui.open", function()
   before_each(function()
     package.loaded["clickaholic.manage_ui"] = nil
     package.loaded["clickaholic.store"] = nil
-    package.loaded["clickaholic.lualine"] = nil
+    package.loaded["clickaholic.tabline"] = nil
     package.loaded["clickaholic"] = nil
 
     path = vim.fn.tempname() .. ".json"
@@ -588,7 +588,7 @@ describe("clickaholic.manage_ui.open keymaps", function()
   before_each(function()
     package.loaded["clickaholic.manage_ui"] = nil
     package.loaded["clickaholic.store"] = nil
-    package.loaded["clickaholic.lualine"] = nil
+    package.loaded["clickaholic.tabline"] = nil
     package.loaded["clickaholic"] = nil
 
     store_calls = {}
@@ -603,7 +603,7 @@ describe("clickaholic.manage_ui.open keymaps", function()
         table.insert(store_calls, { op = "move", idx = idx, direction = direction })
       end,
     }
-    package.loaded["clickaholic.lualine"] = {
+    package.loaded["clickaholic.tabline"] = {
       apply = function() end,
     }
     -- Merged list: row 1 is config-sourced, rows 2-3 are the 1st/2nd stored

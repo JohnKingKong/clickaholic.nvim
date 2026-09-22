@@ -7,7 +7,7 @@ describe("clickaholic.init", function()
   before_each(function()
     package.loaded["clickaholic"] = nil
     package.loaded["clickaholic.store"] = nil
-    package.loaded["clickaholic.lualine"] = nil
+    package.loaded["clickaholic.tabline"] = nil
     store = require("clickaholic.store")
     -- Use a temp file, not the real stdpath('data') path -- these tests
     -- assume the store starts empty, which is never a safe assumption

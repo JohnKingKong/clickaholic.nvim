@@ -2,14 +2,16 @@
 
 A highly configurable button bar for Neovim. Define buttons — an icon,
 a label, or both, plus an action (a Vim command, a shell command, or a
-Lua function) — and click them as [lualine.nvim](https://github.com/nvim-lualine/lualine.nvim)
-components: a single, never-duplicated set of buttons, rendered inside
-your existing statusline.
+Lua function) — and click them from a single, never-duplicated bar
+pinned to the top of the editor, rendered inside your existing
+bufferline.
 
 ## Installation (lazy.nvim)
 
-Requires lualine.nvim — clickaholic doesn't manage a bar surface of
-its own, it plugs into lualine's.
+Requires [bufferline.nvim](https://github.com/akinsho/bufferline.nvim) —
+clickaholic doesn't manage a bar surface of its own, it plugs into
+bufferline's `custom_areas` extension point (a genuinely single tabline
+row, not one per window/tab).
 
 ```lua
 return {
@@ -24,30 +26,21 @@ return {
 }
 ```
 
-Then add clickaholic's buttons to your own lualine config — pick
-whichever section you like (`lualine_x` below), and re-run
-`require('lualine').setup(...)` whenever clickaholic's buttons change
-by listening for its `ClickaholicButtonsChanged` `User` autocmd:
+Then wire clickaholic into your own bufferline config's
+`options.custom_areas`:
 
 ```lua
 return {
-  "nvim-lualine/lualine.nvim",
-  config = function(_, opts)
-    local base_x = vim.deepcopy(opts.sections.lualine_x or {})
-
-    local function refresh()
-      opts.sections.lualine_x = vim.list_extend(vim.deepcopy(base_x), require("clickaholic.lualine").components())
-      require("lualine").setup(opts)
-    end
-
-    require("lualine").setup(opts)
-    vim.schedule(refresh) -- clickaholic's own buttons may not be loaded yet at this exact point
-
-    vim.api.nvim_create_autocmd("User", {
-      pattern = "ClickaholicButtonsChanged",
-      callback = refresh,
-    })
-  end,
+  "akinsho/bufferline.nvim",
+  opts = {
+    options = {
+      custom_areas = {
+        right = function()
+          return require("clickaholic.tabline").custom_area()
+        end,
+      },
+    },
+  },
 }
 ```
 
