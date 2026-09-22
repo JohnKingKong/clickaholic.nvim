@@ -23,7 +23,18 @@ end
 
 function M.run(button)
   if button.action_type == "cmd" then
-    vim.cmd(button.action)
+    local ok, err = pcall(vim.cmd, button.action)
+    if not ok then
+      vim.notify(
+        string.format(
+          "clickaholic: '%s' is not a valid Vim command (%s). "
+            .. "If this is meant to run in a shell, edit the button and set Type to 'shell'.",
+          button.action,
+          tostring(err)
+        ),
+        vim.log.levels.ERROR
+      )
+    end
   elseif button.action_type == "shell" then
     run_shell(button.action)
   elseif button.action_type == "lua" then

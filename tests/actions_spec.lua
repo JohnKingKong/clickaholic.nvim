@@ -18,6 +18,27 @@ describe("clickaholic.actions", function()
       vim.cmd = original_cmd
       assert.are.equal(":echo 'hi'", captured)
     end)
+
+    it("notifies a friendly error instead of raising when the command is invalid", function()
+      local notified
+      local original_notify = vim.notify
+      vim.notify = function(msg, level)
+        notified = { msg = msg, level = level }
+      end
+
+      local ok = pcall(actions.run, { action_type = "cmd", action = "pnpm run start" })
+
+      vim.notify = original_notify
+
+      assert.is_true(ok, "actions.run must never raise, even on an invalid Ex command")
+      assert.is_not_nil(notified)
+      assert.are.equal(vim.log.levels.ERROR, notified.level)
+      assert.is_true(notified.msg:find("pnpm run start") ~= nil, "message must name the failing command")
+      assert.is_true(
+        notified.msg:find("shell") ~= nil,
+        "message must hint that action_type might need to be 'shell' instead"
+      )
+    end)
   end)
 
   describe("lua action", function()
