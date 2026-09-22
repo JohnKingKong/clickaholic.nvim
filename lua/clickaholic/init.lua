@@ -2,7 +2,7 @@
 local M = {}
 
 local store = require("clickaholic.store")
-local statusbar = require("clickaholic.statusbar")
+local lualine_integration = require("clickaholic.lualine")
 
 local config_buttons = {}
 local merged_buttons = {}
@@ -46,7 +46,7 @@ function M.setup(opts)
     end
   end
   merge()
-  statusbar.apply(merged_buttons)
+  lualine_integration.apply(merged_buttons)
 end
 
 function M.get_buttons()
