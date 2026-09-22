@@ -44,9 +44,12 @@ describe("clickaholic.actions", function()
   describe("lua action", function()
     it("calls the function", function()
       local called = false
-      actions.run({ action_type = "lua", action = function()
-        called = true
-      end })
+      actions.run({
+        action_type = "lua",
+        action = function()
+          called = true
+        end,
+      })
       assert.is_true(called)
     end)
   end)

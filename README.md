@@ -2,16 +2,12 @@
 
 A highly configurable button bar for Neovim. Define buttons — an icon,
 a label, or both, plus an action (a Vim command, a shell command, or a
-Lua function) — and click them from a single, never-duplicated bar
-pinned to the top of the editor, rendered inside your existing
-bufferline.
+Lua function) — and click them.
 
 ## Installation (lazy.nvim)
 
-Requires [bufferline.nvim](https://github.com/akinsho/bufferline.nvim) —
-clickaholic doesn't manage a bar surface of its own, it plugs into
-bufferline's `custom_areas` extension point (a genuinely single tabline
-row, not one per window/tab).
+Zero config required — by default clickaholic renders into
+`vim.o.winbar`, so it works out of the box with no other plugins:
 
 ```lua
 return {
@@ -22,6 +18,30 @@ return {
       { label = "Search", icon = "🔭", action_type = "cmd", action = ":Telescope find_files" },
       { label = "Test", icon = "🧪", action_type = "shell", action = "npm test" },
     },
+  },
+}
+```
+
+## Renderers
+
+`opts.renderer` picks where the buttons are drawn:
+
+| `renderer` | Surface | Requires | Notes |
+|---|---|---|---|
+| `"winbar"` (default) | `vim.o.winbar` | nothing | Per-window, top of the editor. Duplicates once per split — the simplest option and the zero-config default. |
+| `"tabline"` | `vim.o.tabline` | [bufferline.nvim](https://github.com/akinsho/bufferline.nvim) | Genuinely single instance across the whole editor, top of the editor. Plugs into bufferline's `custom_areas` extension point. |
+| `"lualine"` | `vim.o.statusline` | [lualine.nvim](https://github.com/nvim-lualine/lualine.nvim) | Genuinely single instance, bottom of the editor. Adds one lualine component per button. |
+| `"none"` | — | — | Disables rendering; call `require("clickaholic").apply_renderer()` yourself if you're building a custom integration. |
+
+### `"tabline"` (bufferline.nvim)
+
+```lua
+return {
+  "johnkingkong/clickaholic.nvim",
+  event = "VeryLazy",
+  opts = {
+    renderer = "tabline",
+    buttons = { --[[ ... ]] },
   },
 }
 ```
@@ -41,6 +61,39 @@ return {
       },
     },
   },
+}
+```
+
+### `"lualine"` (lualine.nvim)
+
+```lua
+return {
+  "johnkingkong/clickaholic.nvim",
+  event = "VeryLazy",
+  opts = {
+    renderer = "lualine",
+    buttons = { --[[ ... ]] },
+  },
+}
+```
+
+lualine.nvim doesn't have an extension point that auto-refreshes, so your
+own lualine config needs to merge clickaholic's components in and
+re-`setup()` whenever they change:
+
+```lua
+return {
+  "nvim-lualine/lualine.nvim",
+  config = function(_, opts)
+    local base_x = vim.deepcopy(opts.sections.lualine_x or {})
+    local function refresh()
+      opts.sections.lualine_x = vim.list_extend(vim.deepcopy(base_x), require("clickaholic.lualine").components())
+      require("lualine").setup(opts)
+    end
+    require("lualine").setup(opts)
+    vim.schedule(refresh)
+    vim.api.nvim_create_autocmd("User", { pattern = "ClickaholicButtonsChanged", callback = refresh })
+  end,
 }
 ```
 

@@ -58,7 +58,6 @@ function M.parse_form(lines)
 end
 
 local store = require("clickaholic.store")
-local tabline_integration = require("clickaholic.tabline")
 local icon_picker = require("clickaholic.icon_picker")
 
 M._last_win = nil
@@ -144,7 +143,7 @@ end
 
 local function refresh_and_redraw()
   require("clickaholic").refresh()
-  tabline_integration.apply(require("clickaholic").get_buttons())
+  require("clickaholic").apply_renderer()
   redraw()
 end
 

@@ -170,15 +170,11 @@ describe("clickaholic.manage_ui add/edit", function()
         return store.load(path)
       end,
       refresh = function() end,
+      apply_renderer = function() end,
     }
     package.loaded["clickaholic.store"].default_path = function()
       return path
     end
-    -- Stubbed like every other describe block here: these tests are about
-    -- the add/edit form, not about tabline rendering.
-    package.loaded["clickaholic.tabline"] = {
-      apply = function() end,
-    }
 
     manage_ui = require("clickaholic.manage_ui")
   end)
@@ -603,9 +599,6 @@ describe("clickaholic.manage_ui.open keymaps", function()
         table.insert(store_calls, { op = "move", idx = idx, direction = direction })
       end,
     }
-    package.loaded["clickaholic.tabline"] = {
-      apply = function() end,
-    }
     -- Merged list: row 1 is config-sourced, rows 2-3 are the 1st/2nd stored
     -- buttons respectively, so we can prove the keymaps act on whatever row
     -- the cursor is on (not just the first row).
@@ -618,6 +611,7 @@ describe("clickaholic.manage_ui.open keymaps", function()
         }
       end,
       refresh = function() end,
+      apply_renderer = function() end,
     }
 
     notifications = {}
