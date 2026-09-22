@@ -55,6 +55,78 @@ describe("clickaholic.actions", function()
   end)
 
   describe("shell action", function()
+    it("runs zsh's own action through -c after silently sourcing .zshrc", function()
+      -- A bare "sh -c" subprocess never sources .zshrc/.bashrc, so version
+      -- managers (nvm, pyenv, ...) set up there are invisible to it. An
+      -- interactive shell (-i) would source it, but also inherits
+      -- interactive-only side effects (prompt themes, job control) that
+      -- print noise or fail outright without a real TTY -- explicitly
+      -- sourcing the rc file inside a plain "-c" shell avoids that.
+      local captured_cmd
+      local original_system = vim.system
+      local original_shell = vim.env.SHELL
+      vim.env.SHELL = "/bin/zsh"
+      vim.system = function(cmd, _opts, callback)
+        captured_cmd = cmd
+        callback({ code = 0, stdout = "", stderr = "" })
+      end
+
+      actions.run({ action_type = "shell", action = "echo hi" })
+      -- run_shell's own notify is deferred via vim.schedule even though
+      -- this stub's callback fires synchronously -- flush it now so it
+      -- doesn't fire later, during a subsequent test's vim.wait() polling.
+      vim.wait(20)
+
+      vim.system = original_system
+      vim.env.SHELL = original_shell
+
+      assert.are.same({ "/bin/zsh", "-c", "source ~/.zshrc >/dev/null 2>&1; echo hi" }, captured_cmd)
+    end)
+
+    it("runs bash's action through -c after silently sourcing .bashrc", function()
+      local captured_cmd
+      local original_system = vim.system
+      local original_shell = vim.env.SHELL
+      vim.env.SHELL = "/bin/bash"
+      vim.system = function(cmd, _opts, callback)
+        captured_cmd = cmd
+        callback({ code = 0, stdout = "", stderr = "" })
+      end
+
+      actions.run({ action_type = "shell", action = "echo hi" })
+      -- run_shell's own notify is deferred via vim.schedule even though
+      -- this stub's callback fires synchronously -- flush it now so it
+      -- doesn't fire later, during a subsequent test's vim.wait() polling.
+      vim.wait(20)
+
+      vim.system = original_system
+      vim.env.SHELL = original_shell
+
+      assert.are.same({ "/bin/bash", "-c", "source ~/.bashrc >/dev/null 2>&1; echo hi" }, captured_cmd)
+    end)
+
+    it("falls back to /bin/sh with no rc file when $SHELL is unset", function()
+      local captured_cmd
+      local original_system = vim.system
+      local original_shell = vim.env.SHELL
+      vim.env.SHELL = nil
+      vim.system = function(cmd, _opts, callback)
+        captured_cmd = cmd
+        callback({ code = 0, stdout = "", stderr = "" })
+      end
+
+      actions.run({ action_type = "shell", action = "echo hi" })
+      -- run_shell's own notify is deferred via vim.schedule even though
+      -- this stub's callback fires synchronously -- flush it now so it
+      -- doesn't fire later, during a subsequent test's vim.wait() polling.
+      vim.wait(20)
+
+      vim.system = original_system
+      vim.env.SHELL = original_shell
+
+      assert.are.same({ "/bin/sh", "-c", "echo hi" }, captured_cmd)
+    end)
+
     it("runs the command, notifies a summary, and stores full output", function()
       local notified
       local original_notify = vim.notify
