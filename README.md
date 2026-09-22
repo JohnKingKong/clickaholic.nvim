@@ -2,8 +2,8 @@
 
 A highly configurable button bar for Neovim. Define buttons — an icon,
 a label, or both, plus an action (a Vim command, a shell command, or a
-Lua function) — and click them from a persistent bar at the top of
-every window.
+Lua function) — and click them from a single persistent bar pinned to
+the bottom of the editor, never duplicated across splits or tabs.
 
 ## Installation (lazy.nvim)
 

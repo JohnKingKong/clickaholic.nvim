@@ -2,7 +2,7 @@
 local M = {}
 
 local store = require("clickaholic.store")
-local winbar = require("clickaholic.winbar")
+local statusbar = require("clickaholic.statusbar")
 
 local config_buttons = {}
 local merged_buttons = {}
@@ -46,7 +46,7 @@ function M.setup(opts)
     end
   end
   merge()
-  winbar.apply(merged_buttons)
+  statusbar.apply(merged_buttons)
 end
 
 function M.get_buttons()

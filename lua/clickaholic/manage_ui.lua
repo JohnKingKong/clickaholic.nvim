@@ -58,7 +58,7 @@ function M.parse_form(lines)
 end
 
 local store = require("clickaholic.store")
-local winbar = require("clickaholic.winbar")
+local statusbar = require("clickaholic.statusbar")
 local icon_picker = require("clickaholic.icon_picker")
 
 M._last_win = nil
@@ -144,7 +144,7 @@ end
 
 local function refresh_and_redraw()
   require("clickaholic").refresh()
-  winbar.apply(require("clickaholic").get_buttons())
+  statusbar.apply(require("clickaholic").get_buttons())
   redraw()
 end
 
