@@ -2,13 +2,25 @@
 describe("clickaholic.init", function()
   local clickaholic
   local store
+  local path
 
   before_each(function()
     package.loaded["clickaholic"] = nil
     package.loaded["clickaholic.store"] = nil
     package.loaded["clickaholic.winbar"] = nil
     store = require("clickaholic.store")
+    -- Use a temp file, not the real stdpath('data') path -- these tests
+    -- assume the store starts empty, which is never a safe assumption
+    -- against a real user's actual saved buttons.
+    path = vim.fn.tempname() .. ".json"
+    package.loaded["clickaholic.store"].default_path = function()
+      return path
+    end
     clickaholic = require("clickaholic")
+  end)
+
+  after_each(function()
+    vim.fn.delete(path)
   end)
 
   it("uses only config buttons when the store is empty", function()
@@ -23,7 +35,7 @@ describe("clickaholic.init", function()
   end)
 
   it("merges config buttons with stored ones, config first", function()
-    store.add(store.default_path(), { label = "Test", icon = "🧪", action_type = "shell", action = "npm test" })
+    store.add(path, { label = "Test", icon = "🧪", action_type = "shell", action = "npm test" })
     clickaholic.setup({
       buttons = {
         { label = "Search", icon = "🔭", action_type = "cmd", action = ":Telescope" },
@@ -33,7 +45,6 @@ describe("clickaholic.init", function()
     assert.are.equal(2, #buttons)
     assert.are.equal("config", buttons[1].source)
     assert.are.equal("stored", buttons[2].source)
-    vim.fn.delete(store.default_path())
   end)
 
   it("rejects a config button with action_type lua and a non-function action", function()
@@ -56,9 +67,8 @@ describe("clickaholic.init", function()
   it("refresh() picks up store changes made after setup", function()
     clickaholic.setup({ buttons = {} })
     assert.are.equal(0, #clickaholic.get_buttons())
-    store.add(store.default_path(), { label = "Test", icon = "🧪", action_type = "shell", action = "npm test" })
+    store.add(path, { label = "Test", icon = "🧪", action_type = "shell", action = "npm test" })
     clickaholic.refresh()
     assert.are.equal(1, #clickaholic.get_buttons())
-    vim.fn.delete(store.default_path())
   end)
 end)
