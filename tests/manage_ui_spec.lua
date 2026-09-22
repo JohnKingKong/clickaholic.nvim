@@ -289,15 +289,16 @@ describe("clickaholic.manage_ui add/edit", function()
     feed("a")
     vim.wait(50)
     local buf = vim.api.nvim_win_get_buf(win)
-    -- 1 list line + 1 separator + 4 form lines + 1 blank spacer + 1 condensed footer line.
-    assert.are.equal(8, vim.api.nvim_buf_line_count(buf))
+    -- 1 list line + 1 separator + 4 form lines. The keybind legend lives in
+    -- the window's border footer now, not the buffer.
+    assert.are.equal(6, vim.api.nvim_buf_line_count(buf))
 
     feed("<Esc>")
     vim.wait(50)
 
     assert.is_true(vim.api.nvim_win_is_valid(win), "<Esc> must cancel the form, not close the window")
-    -- 1 list line + 1 blank spacer + 1 condensed footer line, form/separator gone.
-    assert.are.equal(3, vim.api.nvim_buf_line_count(buf), "form lines must be gone, list-only view restored")
+    -- 1 list line + 1 separator (always present), form gone.
+    assert.are.equal(2, vim.api.nvim_buf_line_count(buf), "form lines must be gone, list-only view restored")
     assert.is_false(vim.bo[buf].modifiable, "buffer must go back to read-only in list mode")
     assert.are.equal(1, #store.load(path), "cancelling must not persist anything")
   end)
@@ -458,38 +459,61 @@ describe("clickaholic.manage_ui.open", function()
     assert.is_true(found)
   end)
 
-  it("shows a condensed keybind footer at the bottom, lazygit-style", function()
+  it("shows a condensed keybind hint in the window's own bottom border, lazygit-style", function()
     manage_ui.open()
-    local buf = vim.api.nvim_win_get_buf(manage_ui._last_win)
-    local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
-    local footer = lines[#lines]
+    local config = vim.api.nvim_win_get_config(manage_ui._last_win)
+    assert.is_true(config.footer ~= nil, "window must have a border footer")
+    local footer = type(config.footer) == "table" and config.footer[1][1] or config.footer
     assert.is_true(footer:find("q") ~= nil and footer:find("close") ~= nil, "footer must mention 'q close'")
     assert.is_true(footer:find("%?") ~= nil, "footer must mention the '?' help key")
+    -- The buffer itself must NOT contain the footer text -- it belongs to
+    -- the border, not the content.
+    local buf = vim.api.nvim_win_get_buf(manage_ui._last_win)
+    local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+    local joined = table.concat(lines, "\n")
+    assert.is_nil(joined:find("all keys"), "condensed footer text must not leak into buffer content")
   end)
 
   local function feed(keys)
     vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes(keys, true, false, true), "x", false)
   end
 
-  it("'?' toggles the footer to an expanded multi-line legend and back", function()
+  it("'?' opens a separate full-keybind popup and toggles it closed again", function()
     manage_ui.open()
     local win = manage_ui._last_win
     vim.api.nvim_set_current_win(win)
-    local buf = vim.api.nvim_win_get_buf(win)
-
-    local condensed_count = vim.api.nvim_buf_line_count(buf)
 
     feed("?")
     vim.wait(50)
-    local expanded_count = vim.api.nvim_buf_line_count(buf)
-    assert.is_true(expanded_count > condensed_count, "expanded legend must add more lines")
-    local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+
+    local help_win = manage_ui._last_help_win
+    assert.is_true(help_win ~= nil and vim.api.nvim_win_is_valid(help_win), "'?' must open a help popup")
+    local help_buf = vim.api.nvim_win_get_buf(help_win)
+    local lines = vim.api.nvim_buf_get_lines(help_buf, 0, -1, false)
     local joined = table.concat(lines, "\n")
-    assert.is_true(joined:find("add button") ~= nil, "expanded legend must describe each key")
+    assert.is_true(joined:find("add button") ~= nil, "help popup must describe each key")
+    -- The main window's own buffer must be untouched by opening help.
+    assert.is_true(vim.api.nvim_win_is_valid(win))
 
     feed("?")
     vim.wait(50)
-    assert.are.equal(condensed_count, vim.api.nvim_buf_line_count(buf), "second '?' must collapse back")
+    assert.is_false(vim.api.nvim_win_is_valid(help_win), "second '?' must close the help popup")
+  end)
+
+  it("<Esc> closes the help popup first, without closing the main window", function()
+    manage_ui.open()
+    local win = manage_ui._last_win
+    vim.api.nvim_set_current_win(win)
+
+    feed("?")
+    vim.wait(50)
+    local help_win = manage_ui._last_help_win
+
+    feed("<Esc>")
+    vim.wait(50)
+
+    assert.is_false(vim.api.nvim_win_is_valid(help_win), "<Esc> must close the help popup")
+    assert.is_true(vim.api.nvim_win_is_valid(win), "<Esc> must not also close the main window")
   end)
 end)
 

@@ -57,10 +57,14 @@ state.mode = "list" -- "list" | "add" | "edit"
 state.edit_index = nil -- stored-list index, only set in "edit" mode
 state.form_start_line = nil -- 0-indexed buffer line where the form's 4 lines start
 state.list_count = 0 -- number of list rows currently rendered (cursor-selectable in list mode)
-state.footer_expanded = false
+state.help_win = nil -- the separate full-keybind popup opened by '?', nil when closed
 
-local FOOTER_CONDENSED = "a add  e edit  d delete  K/J move  ? all keys  q close"
-local FOOTER_EXPANDED = {
+-- lazygit-style: a permanent hint lives in the window's own bottom border
+-- (see M.open()'s `footer` config), and '?' opens a separate popup with the
+-- full legend -- there's no in-buffer footer to keep in sync with the list
+-- or form, so this is the only place either piece of text is defined.
+local FOOTER_CONDENSED = " a add  e edit  d delete  K/J move  ? all keys  q close "
+local HELP_LINES = {
   "a           add button",
   "e / <CR>    edit selected button",
   "d           delete button",
@@ -71,42 +75,29 @@ local FOOTER_EXPANDED = {
   "?           toggle this help",
 }
 
-local function footer_lines()
-  if state.footer_expanded then
-    return FOOTER_EXPANDED
-  end
-  return { FOOTER_CONDENSED }
-end
-
 local function separator_line()
   local width = vim.api.nvim_win_get_width(state.win)
   return string.rep("─", width)
 end
 
 -- Single source of truth for the buffer's line layout: list rows, then
--- (in form mode) a separator + the form's 4 lines, then a blank spacer and
--- the footer. Returns the full line array plus the 0-indexed line where the
--- form content starts (nil when not in form mode). Every caller that
--- (re)draws the buffer goes through this, so there is exactly one place
--- that computes these offsets.
+-- always a separator, then (in form mode) the form's 4 lines. Returns the
+-- full line array plus the 0-indexed line where the form content starts
+-- (nil when not in form mode). Every caller that (re)draws the buffer goes
+-- through this, so there is exactly one place that computes these offsets.
 local function build_lines(list_lines, form_content_lines)
   local lines = {}
   for _, line in ipairs(list_lines) do
     table.insert(lines, line)
   end
+  table.insert(lines, separator_line())
 
   local form_start_line = nil
   if form_content_lines then
-    table.insert(lines, separator_line())
     form_start_line = #lines
     for _, line in ipairs(form_content_lines) do
       table.insert(lines, line)
     end
-  end
-
-  table.insert(lines, "")
-  for _, line in ipairs(footer_lines()) do
-    table.insert(lines, line)
   end
 
   return lines, form_start_line
@@ -223,12 +214,31 @@ function M.open()
     height = height,
     border = "rounded",
     title = " clickaholic ",
+    footer = FOOTER_CONDENSED,
+    footer_pos = "left",
   })
 
   state.buf, state.win, state.selected = buf, win, 1
   state.mode, state.edit_index, state.form_start_line = "list", nil, nil
-  state.list_count, state.footer_expanded = 0, false
+  state.list_count = 0
+  if state.help_win and vim.api.nvim_win_is_valid(state.help_win) then
+    vim.api.nvim_win_close(state.help_win, true)
+  end
+  state.help_win = nil
+  M._last_help_win = nil
   M._last_win = win
+
+  vim.api.nvim_create_autocmd("WinClosed", {
+    pattern = tostring(win),
+    once = true,
+    callback = function()
+      if state.help_win and vim.api.nvim_win_is_valid(state.help_win) then
+        vim.api.nvim_win_close(state.help_win, true)
+        state.help_win = nil
+        M._last_help_win = nil
+      end
+    end,
+  })
 
   vim.api.nvim_create_autocmd("CursorMoved", {
     buffer = buf,
@@ -339,27 +349,48 @@ function M.open()
   end, opts)
 
   vim.keymap.set("n", "?", function()
-    state.footer_expanded = not state.footer_expanded
-    if state.mode == "list" then
-      redraw()
+    if state.help_win and vim.api.nvim_win_is_valid(state.help_win) then
+      vim.api.nvim_win_close(state.help_win, true)
+      state.help_win = nil
+      M._last_help_win = nil
       return
     end
-    -- A form is open: rebuild around the field values already typed rather
-    -- than discarding them, and keep the cursor where the user left it.
-    local current_form_lines =
-      vim.api.nvim_buf_get_lines(state.buf, state.form_start_line, state.form_start_line + 4, false)
-    local cursor = vim.api.nvim_win_get_cursor(win)
-    local buttons = require("clickaholic").get_buttons()
-    local list_lines = M.render_list_lines(buttons)
-    local lines, form_start_line = build_lines(list_lines, current_form_lines)
-    state.form_start_line = form_start_line
-    vim.bo[state.buf].modifiable = true
-    vim.api.nvim_buf_set_lines(state.buf, 0, -1, false, lines)
-    pcall(vim.api.nvim_win_set_cursor, win, cursor)
+
+    local help_buf = vim.api.nvim_create_buf(false, true)
+    vim.bo[help_buf].buftype = "nofile"
+    vim.bo[help_buf].bufhidden = "wipe"
+    vim.api.nvim_buf_set_lines(help_buf, 0, -1, false, HELP_LINES)
+    vim.bo[help_buf].modifiable = false
+
+    local help_width = 0
+    for _, line in ipairs(HELP_LINES) do
+      help_width = math.max(help_width, #line)
+    end
+    help_width = help_width + 2
+
+    state.help_win = vim.api.nvim_open_win(help_buf, false, {
+      relative = "win",
+      win = win,
+      row = 1,
+      col = math.floor((vim.api.nvim_win_get_width(win) - help_width) / 2),
+      width = help_width,
+      height = #HELP_LINES,
+      border = "rounded",
+      title = " keybindings ",
+      focusable = false,
+      zindex = 60,
+    })
+    M._last_help_win = state.help_win
   end, opts)
 
   for _, lhs in ipairs({ "<Esc>", "q" }) do
     vim.keymap.set("n", lhs, function()
+      if state.help_win and vim.api.nvim_win_is_valid(state.help_win) then
+        vim.api.nvim_win_close(state.help_win, true)
+        state.help_win = nil
+        M._last_help_win = nil
+        return
+      end
       if state.mode == "list" then
         pcall(vim.api.nvim_win_close, win, true)
         return
