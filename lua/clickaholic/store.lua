@@ -29,6 +29,7 @@ function M.save(path, buttons)
       icon = button.icon,
       action_type = button.action_type,
       action = button.action,
+      cwd = button.cwd,
     })
   end
   vim.fn.writefile({ vim.json.encode(to_write) }, path)

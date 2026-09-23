@@ -97,6 +97,25 @@ return {
 }
 ```
 
+## Scoping a button to a directory
+
+Add `cwd` to a button to only show it when the current directory is that
+path or a subdirectory of it — buttons with no `cwd` are global and
+always show:
+
+```lua
+buttons = {
+  { label = "Search", icon = "🔭", action_type = "cmd", action = ":Telescope find_files" }, -- global
+  {
+    label = "Console",
+    icon = "🚀",
+    action_type = "cmd",
+    action = "botright split | terminal cd ~/proj/apps/console && pnpm run start",
+    cwd = vim.fn.expand("~/proj"), -- only shows inside ~/proj (or a subdirectory)
+  },
+}
+```
+
 ## Adding buttons interactively
 
 Run `:Clickaholic` to open the button manager:
@@ -108,12 +127,16 @@ Run `:Clickaholic` to open the button manager:
 | `d` | Delete the selected button |
 | `K` / `J` | Move the selected button up / down |
 | `<C-e>` | Pick an icon (while editing the Icon field) |
+| `<C-l>` | Link the Cwd field to the current directory |
 | `<CR>` | Submit the form |
 | `<Esc>` / `q` | Cancel the form, or close the window from the list |
 | `?` | Toggle the full keybind legend |
 
 Buttons added this way are saved to `stdpath('data')/clickaholic.json`
-and survive restarts.
+and survive restarts. The form's Cwd field works the same as `opts.buttons`'
+`cwd` (see [Scoping a button to a directory](#scoping-a-button-to-a-directory)
+above) — leave it blank for a global button, or press `<C-l>` to fill it
+in with wherever you currently are.
 
 Buttons defined in `setup()` with `action_type = "lua"` can run any Lua
 function, but can only be changed by editing your config — a function

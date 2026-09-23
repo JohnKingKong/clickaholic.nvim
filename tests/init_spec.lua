@@ -74,6 +74,63 @@ describe("clickaholic.init", function()
     assert.are.equal(1, #clickaholic.get_buttons())
   end)
 
+  describe("get_visible_buttons", function()
+    local original_getcwd
+
+    before_each(function()
+      original_getcwd = vim.fn.getcwd
+    end)
+
+    after_each(function()
+      vim.fn.getcwd = original_getcwd
+    end)
+
+    it("includes global buttons (no cwd) regardless of the current directory", function()
+      vim.fn.getcwd = function()
+        return "/home/user/anywhere"
+      end
+      clickaholic.setup({
+        renderer = "none",
+        buttons = { { label = "Global", icon = "🌍", action_type = "cmd", action = ":X" } },
+      })
+      assert.are.equal(1, #clickaholic.get_visible_buttons())
+    end)
+
+    it("includes a scoped button only when the cwd matches", function()
+      clickaholic.setup({
+        renderer = "none",
+        buttons = {
+          { label = "Scoped", icon = "🎯", action_type = "cmd", action = ":X", cwd = "/home/user/proj" },
+        },
+      })
+
+      vim.fn.getcwd = function()
+        return "/home/user/proj"
+      end
+      assert.are.equal(1, #clickaholic.get_visible_buttons())
+
+      vim.fn.getcwd = function()
+        return "/home/user/elsewhere"
+      end
+      assert.are.equal(0, #clickaholic.get_visible_buttons())
+    end)
+
+    it("get_buttons() always returns the full list regardless of cwd", function()
+      clickaholic.setup({
+        renderer = "none",
+        buttons = {
+          { label = "Global", icon = "🌍", action_type = "cmd", action = ":X" },
+          { label = "Scoped", icon = "🎯", action_type = "cmd", action = ":X", cwd = "/home/user/proj" },
+        },
+      })
+      vim.fn.getcwd = function()
+        return "/home/user/elsewhere"
+      end
+      assert.are.equal(2, #clickaholic.get_buttons())
+      assert.are.equal(1, #clickaholic.get_visible_buttons())
+    end)
+  end)
+
   describe("renderer selection", function()
     it("defaults to winbar when opts.renderer is unset", function()
       clickaholic.setup({

@@ -64,7 +64,7 @@ end
 -- on purpose, not clickaholic fighting another plugin for ownership the way
 -- every prior attempt did.
 function M.custom_area()
-  local buttons = require("clickaholic").get_buttons()
+  local buttons = require("clickaholic").get_visible_buttons()
   M.set_buttons(buttons)
   return { { text = M.render(buttons) } }
 end

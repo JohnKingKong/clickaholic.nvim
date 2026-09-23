@@ -4,7 +4,7 @@ describe("clickaholic.lualine", function()
 
   local function stub_clickaholic(buttons)
     package.loaded["clickaholic"] = {
-      get_buttons = function()
+      get_visible_buttons = function()
         return buttons
       end,
     }

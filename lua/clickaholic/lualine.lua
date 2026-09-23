@@ -40,7 +40,7 @@ end
 -- rather than a single component containing all of them.
 function M.components()
   local components = {}
-  for _, button in ipairs(require("clickaholic").get_buttons()) do
+  for _, button in ipairs(require("clickaholic").get_visible_buttons()) do
     table.insert(components, {
       function()
         return icon_and_label(button.icon, button.label)

@@ -10,11 +10,17 @@ local function icon_and_label(icon, label)
   return icon .. label
 end
 
+-- Add/edit form is Label, Icon, Type, Action, Cwd, in that fixed order --
+-- every offset below is relative to this.
+local FORM_LINE_COUNT = 5
+
 function M.render_list_lines(buttons)
   local lines = {}
   for _, button in ipairs(buttons) do
     local prefix = button.source == "config" and "[config] " or ""
-    table.insert(lines, prefix .. icon_and_label(button.icon, button.label))
+    local scope = (button.cwd and button.cwd ~= "") and (" (scoped: " .. vim.fn.fnamemodify(button.cwd, ":t") .. ")")
+      or ""
+    table.insert(lines, prefix .. icon_and_label(button.icon, button.label) .. scope)
   end
   return lines
 end
@@ -26,6 +32,7 @@ function M.render_form_lines(button)
     "Icon: " .. (button.icon or ""),
     "Type: " .. (button.action_type or "cmd"),
     "Action: " .. (button.action or ""),
+    "Cwd: " .. (button.cwd or ""),
   }
 end
 
@@ -38,6 +45,7 @@ function M.parse_form(lines)
   local icon = field_value(lines[2], "Icon: ")
   local action_type = field_value(lines[3], "Type: ")
   local action = field_value(lines[4], "Action: ")
+  local cwd = field_value(lines[5], "Cwd: ")
 
   if label == "" and icon == "" then
     return nil, "Provide a label, an icon, or both"
@@ -54,7 +62,9 @@ function M.parse_form(lines)
     icon = icon,
     action_type = action_type,
     action = action,
-  }, nil
+    cwd = cwd,
+  },
+    nil
 end
 
 local store = require("clickaholic.store")
@@ -79,6 +89,7 @@ local HELP_LINES = {
   "d           delete button",
   "K / J       move button up / down",
   "<C-e>       pick icon (in the Icon field)",
+  "<C-l>       link the Cwd field to the current directory",
   "<CR>        submit form",
   "<Esc> / q   cancel form / close window",
   "?           toggle this help",
@@ -147,12 +158,12 @@ local function refresh_and_redraw()
   redraw()
 end
 
--- Overwrites just the 4 form lines (never the list/separator/footer around
--- them, which is why this uses an exact 4-line range rather than writing to
--- the end of the buffer).
+-- Overwrites just the form's FORM_LINE_COUNT lines (never the
+-- list/separator/footer around them, which is why this uses an exact
+-- range rather than writing to the end of the buffer).
 function M._set_form_lines(lines)
   vim.bo[state.buf].modifiable = true
-  vim.api.nvim_buf_set_lines(state.buf, state.form_start_line, state.form_start_line + 4, false, lines)
+  vim.api.nvim_buf_set_lines(state.buf, state.form_start_line, state.form_start_line + FORM_LINE_COUNT, false, lines)
   vim.bo[state.buf].modifiable = true
 end
 
@@ -190,7 +201,8 @@ function M._start_edit()
 end
 
 function M._submit_form()
-  local lines = vim.api.nvim_buf_get_lines(state.buf, state.form_start_line, state.form_start_line + 4, false)
+  local lines =
+    vim.api.nvim_buf_get_lines(state.buf, state.form_start_line, state.form_start_line + FORM_LINE_COUNT, false)
   local button, err = M.parse_form(lines)
   if not button then
     vim.notify("clickaholic: " .. err, vim.log.levels.ERROR)
@@ -345,8 +357,8 @@ function M.open()
       vim.notify("clickaholic: open the add/edit form first ('a' or 'e')", vim.log.levels.WARN)
       return
     end
-    -- Form lines are Label/Icon/Type/Action in that order, so the Icon field
-    -- is always one line after where the form starts.
+    -- Form lines are Label/Icon/Type/Action/Cwd in that order, so the Icon
+    -- field is always one line after where the form starts.
     local icon_line = state.form_start_line + 1
     icon_picker.open(function(icon)
       local new_line = "Icon: " .. icon
@@ -355,6 +367,20 @@ function M.open()
       vim.api.nvim_set_current_win(state.win)
       vim.api.nvim_win_set_cursor(state.win, { icon_line + 1, #new_line })
     end)
+  end, opts)
+
+  vim.keymap.set({ "n", "i" }, "<C-l>", function()
+    if state.mode == "list" then
+      vim.notify("clickaholic: open the add/edit form first ('a' or 'e')", vim.log.levels.WARN)
+      return
+    end
+    -- Cwd is the 5th form field (Label/Icon/Type/Action/Cwd), so it's
+    -- always four lines after where the form starts.
+    local cwd_line = state.form_start_line + 4
+    local new_line = "Cwd: " .. vim.fn.getcwd()
+    vim.bo[state.buf].modifiable = true
+    vim.api.nvim_buf_set_lines(state.buf, cwd_line, cwd_line + 1, false, { new_line })
+    vim.api.nvim_win_set_cursor(state.win, { cwd_line + 1, #new_line })
   end, opts)
 
   vim.keymap.set("n", "?", function()

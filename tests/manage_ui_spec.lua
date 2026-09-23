@@ -43,6 +43,7 @@ describe("clickaholic.manage_ui", function()
         "Icon: ",
         "Type: cmd",
         "Action: ",
+        "Cwd: ",
       }, lines)
     end)
 
@@ -52,12 +53,14 @@ describe("clickaholic.manage_ui", function()
         icon = "🧪",
         action_type = "shell",
         action = "npm test",
+        cwd = "/home/test/proj",
       })
       assert.are.same({
         "Label: Test",
         "Icon: 🧪",
         "Type: shell",
         "Action: npm test",
+        "Cwd: /home/test/proj",
       }, lines)
     end)
   end)
@@ -69,6 +72,7 @@ describe("clickaholic.manage_ui", function()
         "Icon: 🧪",
         "Type: shell",
         "Action: npm test",
+        "Cwd: ",
       })
       assert.is_nil(err)
       assert.are.same({
@@ -76,7 +80,20 @@ describe("clickaholic.manage_ui", function()
         icon = "🧪",
         action_type = "shell",
         action = "npm test",
+        cwd = "",
       }, button)
+    end)
+
+    it("parses a Cwd field into a scoped button", function()
+      local button, err = manage_ui.parse_form({
+        "Label: Test",
+        "Icon: 🧪",
+        "Type: shell",
+        "Action: npm test",
+        "Cwd: /home/test/proj",
+      })
+      assert.is_nil(err)
+      assert.are.equal("/home/test/proj", button.cwd)
     end)
 
     it("allows an empty label when an icon is provided (icon-only button)", function()
@@ -85,6 +102,7 @@ describe("clickaholic.manage_ui", function()
         "Icon: 🧪",
         "Type: shell",
         "Action: npm test",
+        "Cwd: ",
       })
       assert.is_nil(err)
       assert.are.same({
@@ -92,6 +110,7 @@ describe("clickaholic.manage_ui", function()
         icon = "🧪",
         action_type = "shell",
         action = "npm test",
+        cwd = "",
       }, button)
     end)
 
@@ -101,6 +120,7 @@ describe("clickaholic.manage_ui", function()
         "Icon: ",
         "Type: shell",
         "Action: npm test",
+        "Cwd: ",
       })
       assert.is_nil(err)
       assert.are.same({
@@ -108,6 +128,7 @@ describe("clickaholic.manage_ui", function()
         icon = "",
         action_type = "shell",
         action = "npm test",
+        cwd = "",
       }, button)
     end)
 
@@ -117,6 +138,7 @@ describe("clickaholic.manage_ui", function()
         "Icon: ",
         "Type: shell",
         "Action: npm test",
+        "Cwd: ",
       })
       assert.is_nil(button)
       assert.is_true(err:find("[Ll]abel") ~= nil or err:find("[Ii]con") ~= nil)
@@ -128,6 +150,7 @@ describe("clickaholic.manage_ui", function()
         "Icon: 🧪",
         "Type: shell",
         "Action: ",
+        "Cwd: ",
       })
       assert.is_nil(button)
       assert.is_true(err:find("[Aa]ction") ~= nil)
@@ -139,6 +162,7 @@ describe("clickaholic.manage_ui", function()
         "Icon: 🧪",
         "Type: lua",
         "Action: npm test",
+        "Cwd: ",
       })
       assert.is_nil(button)
       assert.is_true(err:find("[Tt]ype") ~= nil)
@@ -192,6 +216,7 @@ describe("clickaholic.manage_ui add/edit", function()
       "Icon: 🧪",
       "Type: shell",
       "Action: npm test",
+      "Cwd: ",
     })
     manage_ui._submit_form()
 
@@ -216,6 +241,7 @@ describe("clickaholic.manage_ui add/edit", function()
       "Icon: ",
       "Type: shell",
       "Action: npm test",
+      "Cwd: ",
     })
     manage_ui._submit_form()
 
@@ -331,9 +357,9 @@ describe("clickaholic.manage_ui add/edit", function()
     feed("a")
     vim.wait(50)
     local buf = vim.api.nvim_win_get_buf(win)
-    -- 1 list line + 1 separator + 4 form lines. The keybind legend lives in
+    -- 1 list line + 1 separator + 5 form lines. The keybind legend lives in
     -- the window's border footer now, not the buffer.
-    assert.are.equal(6, vim.api.nvim_buf_line_count(buf))
+    assert.are.equal(7, vim.api.nvim_buf_line_count(buf))
 
     feed("<Esc>")
     vim.wait(50)

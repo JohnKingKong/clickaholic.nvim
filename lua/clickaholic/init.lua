@@ -2,6 +2,7 @@
 local M = {}
 
 local store = require("clickaholic.store")
+local cwd_match = require("clickaholic.cwd_match")
 
 local RENDERERS = {
   winbar = "clickaholic.winbar",
@@ -65,10 +66,39 @@ function M.setup(opts)
 
   merge()
   M.apply_renderer()
+
+  -- tabline.lua/lualine.lua re-pull get_visible_buttons() fresh on their
+  -- own redraw cycle, so a cwd change (e.g. switching fireplaces) already
+  -- shows/hides scoped buttons correctly for them without this. winbar.lua
+  -- sets a static vim.o.winbar string at apply() time, though, so without
+  -- an explicit re-apply here a directory-scoped button would only
+  -- show/hide the next time some unrelated button edit happened to
+  -- trigger apply_renderer() again.
+  vim.api.nvim_create_autocmd({ "DirChanged", "TabEnter" }, {
+    callback = M.apply_renderer,
+  })
 end
 
 function M.get_buttons()
   return merged_buttons
+end
+
+-- Buttons filtered to the ones visible from the current directory: a
+-- button with no cwd is global (always visible); one with a cwd only
+-- shows there or in a subdirectory of it. This is what renderers should
+-- draw -- get_buttons() stays the full raw list (config + stored,
+-- unfiltered) for the manager UI, which needs to list every button
+-- regardless of where you currently are so you can still edit one scoped
+-- elsewhere.
+function M.get_visible_buttons()
+  local cwd = vim.fn.getcwd()
+  local visible = {}
+  for _, button in ipairs(merged_buttons) do
+    if cwd_match.matches(button.cwd, cwd) then
+      table.insert(visible, button)
+    end
+  end
+  return visible
 end
 
 function M.refresh()
@@ -80,7 +110,7 @@ end
 -- same regardless of which renderer (or none) setup() selected.
 function M.apply_renderer()
   if renderer then
-    renderer.apply(merged_buttons)
+    renderer.apply(M.get_visible_buttons())
   end
 end
 

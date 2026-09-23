@@ -67,7 +67,7 @@ describe("clickaholic.tabline", function()
   describe("custom_area", function()
     it("returns a single item whose text is the full rendered button string", function()
       package.loaded["clickaholic"] = {
-        get_buttons = function()
+        get_visible_buttons = function()
           return { { label = "Search", icon = "🔭", action_type = "cmd", action = ":Telescope" } }
         end,
       }
@@ -89,7 +89,7 @@ describe("clickaholic.tabline", function()
       package.loaded["clickaholic.tabline"] = nil
       tabline = require("clickaholic.tabline")
       package.loaded["clickaholic"] = {
-        get_buttons = function()
+        get_visible_buttons = function()
           return {
             { label = "Search", icon = "🔭", action_type = "cmd", action = ":Telescope" },
             { label = "Test", icon = "🧪", action_type = "shell", action = "npm test" },
