@@ -31,6 +31,7 @@ return {
 | `"winbar"` (default) | `vim.o.winbar` | nothing | Per-window, top of the editor. Duplicates once per split — the simplest option and the zero-config default. |
 | `"tabline"` | `vim.o.tabline` | [bufferline.nvim](https://github.com/akinsho/bufferline.nvim) | Genuinely single instance across the whole editor, top of the editor. Plugs into bufferline's `custom_areas` extension point. |
 | `"lualine"` | `vim.o.statusline` | [lualine.nvim](https://github.com/nvim-lualine/lualine.nvim) | Genuinely single instance, bottom of the editor. Adds one lualine component per button. |
+| `"tabufline"` | `vim.o.tabline` | [NvChad/ui](https://github.com/NvChad/ui)'s tabufline | Genuinely single instance, top of the editor. Plugs into tabufline's `modules`/`order` extension point — the NvChad equivalent of bufferline's `custom_areas`. |
 | `"none"` | — | — | Disables rendering; call `require("clickaholic").apply_renderer()` yourself if you're building a custom integration. |
 
 ### `"tabline"` (bufferline.nvim)
@@ -94,6 +95,30 @@ return {
     vim.schedule(refresh)
     vim.api.nvim_create_autocmd("User", { pattern = "ClickaholicButtonsChanged", callback = refresh })
   end,
+}
+```
+
+### `"tabufline"` (NvChad)
+
+```lua
+return {
+  "johnkingkong/clickaholic.nvim",
+  event = "VeryLazy",
+  opts = {
+    renderer = "tabufline",
+    buttons = { --[[ ... ]] },
+  },
+}
+```
+
+Then wire it into your `chadrc.lua`:
+
+```lua
+M.ui = {
+  tabufline = {
+    modules = { clickaholic = require("clickaholic.tabufline").module },
+    order = { "treeOffset", "buffers", "tabs", "clickaholic", "btns" },
+  },
 }
 ```
 

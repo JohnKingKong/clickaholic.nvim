@@ -10,6 +10,7 @@ describe("clickaholic.init", function()
     package.loaded["clickaholic.winbar"] = nil
     package.loaded["clickaholic.tabline"] = nil
     package.loaded["clickaholic.lualine"] = nil
+    package.loaded["clickaholic.tabufline"] = nil
     store = require("clickaholic.store")
     -- Use a temp file, not the real stdpath('data') path -- these tests
     -- assume the store starts empty, which is never a safe assumption
@@ -180,6 +181,15 @@ describe("clickaholic.init", function()
       clickaholic.apply_renderer()
       local tabline = require("clickaholic.tabline")
       assert.is_true(tabline.render(clickaholic.get_buttons()):find("Test") ~= nil)
+    end)
+
+    it("applies the tabufline renderer when opts.renderer = 'tabufline'", function()
+      local tabufline = require("clickaholic.tabufline")
+      clickaholic.setup({
+        renderer = "tabufline",
+        buttons = { { label = "Search", icon = "🔭", action_type = "cmd", action = ":Telescope" } },
+      })
+      assert.is_true(tabufline.render(clickaholic.get_buttons()):find("Search") ~= nil)
     end)
   end)
 end)

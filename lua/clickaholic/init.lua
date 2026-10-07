@@ -8,6 +8,7 @@ local RENDERERS = {
   winbar = "clickaholic.winbar",
   tabline = "clickaholic.tabline",
   lualine = "clickaholic.lualine",
+  tabufline = "clickaholic.tabufline",
   none = nil,
 }
 
