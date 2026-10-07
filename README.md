@@ -116,7 +116,10 @@ Then wire it into your `chadrc.lua`:
 ```lua
 M.ui = {
   tabufline = {
-    modules = { clickaholic = require("clickaholic.tabufline").module },
+    -- Wrapped, not passed directly: chadrc.lua's table is built eagerly at
+    -- require() time, before lazy.nvim has loaded a VeryLazy-triggered
+    -- plugin like this one on a fresh install.
+    modules = { clickaholic = function() return require("clickaholic.tabufline").module() end },
     order = { "treeOffset", "buffers", "tabs", "clickaholic", "btns" },
   },
 }
